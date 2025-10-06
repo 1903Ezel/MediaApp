@@ -8,6 +8,7 @@ const permissionStatus = ref('default');
 const isSubscribed = ref(false);
 const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
+// URL-safe base64 string'ini Uint8Array'e çeviren yardımcı fonksiyon
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -19,17 +20,21 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// Mevcut aboneliği kontrol et ve veritabanına kaydet/doğrula
 async function subscribeUser() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     alert("Bu tarayıcı anlık bildirimleri desteklemiyor.");
     return;
   }
+
   try {
     const swRegistration = await navigator.serviceWorker.ready;
     const subscription = await swRegistration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
     });
+
+    // Aboneliği veritabanına kaydet
     await supabase.from('push_subscriptions').insert({
       user_id: session.value.user.id,
       subscription: subscription,
@@ -38,6 +43,7 @@ async function subscribeUser() {
     isSubscribed.value = true;
     permissionStatus.value = 'granted';
     alert("Bildirimlere başarıyla abone olundu!");
+
   } catch (error) {
     console.error("Abonelik hatası:", error);
     permissionStatus.value = 'denied';
@@ -45,6 +51,7 @@ async function subscribeUser() {
   }
 }
 
+// Bildirim izni isteme fonksiyonu
 async function requestNotificationPermission() {
   const permissionResult = await Notification.requestPermission();
   permissionStatus.value = permissionResult;
@@ -53,7 +60,14 @@ async function requestNotificationPermission() {
   }
 }
 
+// Komponent yüklendiğinde mevcut durumu kontrol et
 onMounted(() => {
+  if (!('Notification' in window)) {
+      console.log("Bu tarayıcı anlık bildirimleri desteklemiyor.");
+      permissionStatus.value = 'denied'; // Desteklenmiyorsa butonu gösterme
+      return;
+  }
+  
   if ('permissions' in navigator) {
     navigator.permissions.query({ name: 'push', userVisibleOnly: true }).then(result => {
       permissionStatus.value = result.state;
@@ -71,10 +85,12 @@ onMounted(() => {
       <Bell :size="16" />
       <span>Bildirimleri Aç</span>
     </button>
+    
     <div v-else-if="permissionStatus === 'granted'" class="flex items-center gap-2 text-sm text-green-400">
       <Bell :size="16" />
       <span>Bildirimler Aktif</span>
     </div>
+
     <div v-else-if="permissionStatus === 'denied'" class="flex items-center gap-2 text-sm text-red-400">
       <BellOff :size="16" />
       <span>Bildirimler Engellendi</span>
