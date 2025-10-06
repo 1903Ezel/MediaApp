@@ -5,7 +5,7 @@ import Auth from './components/Auth.vue'
 import Posts from './components/Posts.vue'
 import Chat from './components/Chat.vue';
 import MenuButton from './components/MenuButton.vue';
-import NotificationManager from './components/NotificationManager.vue'; // Bildirim yöneticisini import ediyoruz
+import NotificationManager from './components/NotificationManager.vue'; // YENİ KOMPONENTİ IMPORT ET
 import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft } from 'lucide-vue-next'
 import { supabase } from './supabase.js'
 

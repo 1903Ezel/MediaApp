@@ -5,54 +5,66 @@ import { session } from '../store.js';
 import { Bell, BellOff } from 'lucide-vue-next';
 
 const permissionStatus = ref('default');
-const isSubscribed = ref(false);
 const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
 // URL-safe base64 string'ini Uint8Array'e çeviren yardımcı fonksiyon
 function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
+  try {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  } catch (error) {
+    console.error("VAPID Public Key'i çevirirken hata oluştu:", error);
+    return null;
   }
-  return outputArray;
 }
 
-// Mevcut aboneliği kontrol et ve veritabanına kaydet/doğrula
+// Kullanıcıyı bildirimlere abone yapan fonksiyon
 async function subscribeUser() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     alert("Bu tarayıcı anlık bildirimleri desteklemiyor.");
     return;
   }
 
+  const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+  if (!applicationServerKey) {
+      alert("Bildirim yapılandırma hatası: VAPID anahtarı geçersiz.");
+      return;
+  }
+
   try {
     const swRegistration = await navigator.serviceWorker.ready;
     const subscription = await swRegistration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      applicationServerKey,
     });
 
-    // Aboneliği veritabanına kaydet
     await supabase.from('push_subscriptions').insert({
       user_id: session.value.user.id,
       subscription: subscription,
     });
     
-    isSubscribed.value = true;
     permissionStatus.value = 'granted';
     alert("Bildirimlere başarıyla abone olundu!");
 
   } catch (error) {
     console.error("Abonelik hatası:", error);
     permissionStatus.value = 'denied';
-    alert("Bildirim izni alınamadı. Tarayıcı ayarlarınızı kontrol edin.");
+    alert("Bildirim izni alınamadı. Tarayıcı ayarlarınızı veya site izinlerinizi kontrol edin.");
   }
 }
 
 // Bildirim izni isteme fonksiyonu
 async function requestNotificationPermission() {
+  if (!vapidPublicKey) {
+      alert("Bildirim yapılandırması eksik. Lütfen .env.local dosyasını kontrol edin.");
+      return;
+  }
   const permissionResult = await Notification.requestPermission();
   permissionStatus.value = permissionResult;
   if (permissionResult === 'granted') {
@@ -62,9 +74,9 @@ async function requestNotificationPermission() {
 
 // Komponent yüklendiğinde mevcut durumu kontrol et
 onMounted(() => {
-  if (!('Notification' in window)) {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
       console.log("Bu tarayıcı anlık bildirimleri desteklemiyor.");
-      permissionStatus.value = 'denied'; // Desteklenmiyorsa butonu gösterme
+      permissionStatus.value = 'unsupported';
       return;
   }
   
