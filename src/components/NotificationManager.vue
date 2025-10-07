@@ -2,12 +2,11 @@
 import { ref, onMounted } from 'vue';
 import { supabase } from '../supabase.js';
 import { session } from '../store.js';
-import { Bell, BellOff } from 'lucide-vue-next';
+import { Bell, BellOff, XCircle } from 'lucide-vue-next';
 
-const permissionStatus = ref('default');
+const permissionStatus = ref('loading'); // Başlangıç durumu
 const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
-// URL-safe base64 string'ini Uint8Array'e çeviren yardımcı fonksiyon
 function urlBase64ToUint8Array(base64String) {
   try {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -24,12 +23,8 @@ function urlBase64ToUint8Array(base64String) {
   }
 }
 
-// Kullanıcıyı bildirimlere abone yapan fonksiyon
 async function subscribeUser() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    alert("Bu tarayıcı anlık bildirimleri desteklemiyor.");
-    return;
-  }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
   const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
   if (!applicationServerKey) {
@@ -59,7 +54,6 @@ async function subscribeUser() {
   }
 }
 
-// Bildirim izni isteme fonksiyonu
 async function requestNotificationPermission() {
   if (!vapidPublicKey) {
       alert("Bildirim yapılandırması eksik. Lütfen .env.local dosyasını kontrol edin.");
@@ -72,21 +66,13 @@ async function requestNotificationPermission() {
   }
 }
 
-// Komponent yüklendiğinde mevcut durumu kontrol et
 onMounted(() => {
   if (!('Notification' in window) || !('serviceWorker' in navigator)) {
       console.log("Bu tarayıcı anlık bildirimleri desteklemiyor.");
       permissionStatus.value = 'unsupported';
       return;
   }
-  
-  if ('permissions' in navigator) {
-    navigator.permissions.query({ name: 'push', userVisibleOnly: true }).then(result => {
-      permissionStatus.value = result.state;
-    });
-  } else {
-      permissionStatus.value = Notification.permission;
-  }
+  permissionStatus.value = Notification.permission;
 });
 </script>
 
@@ -106,6 +92,11 @@ onMounted(() => {
     <div v-else-if="permissionStatus === 'denied'" class="flex items-center gap-2 text-sm text-red-400">
       <BellOff :size="16" />
       <span>Bildirimler Engellendi</span>
+    </div>
+
+    <div v-else-if="permissionStatus === 'unsupported'" class="flex items-center gap-2 text-sm text-gray-500">
+      <XCircle :size="16" />
+      <span>Desteklenmiyor</span>
     </div>
   </div>
 </template>
