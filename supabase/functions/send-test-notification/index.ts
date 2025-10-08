@@ -1,53 +1,65 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import * as webpush from "https://deno.land/x/web_push@0.1.2/mod.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!
-const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!
-const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SERVICE_ROLE_KEY')!,
+  { auth: { persistSession: false } }
+);
 
-const vapidKeys = {
-  publicKey: VAPID_PUBLIC_KEY,
-  privateKey: VAPID_PRIVATE_KEY
-};
-
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      SERVICE_ROLE_KEY,
-      { auth: { persistSession: false } }
-    )
+    const { title, body, user_id } = await req.json().catch(() => ({
+      title: 'Yeni Mesaj!',
+      body: 'Push notification testi!',
+    }));
 
-    const { data: subscriptions, error } = await supabaseAdmin
+    const { data: subscriptions, error } = await supabase
       .from('push_subscriptions')
-      .select('subscription')
+      .select('subscription');
 
-    if (error) throw error;
+    if (error) throw new Error(`Query error: ${error.message}`);
+    
+    console.log(`Found ${subscriptions?.length || 0} subscribers`);
 
-    const notificationPromises = subscriptions.map(sub => {
-      const pushSubscription = sub.subscription as webpush.PushSubscription;
-      const payload = JSON.stringify({
-        title: 'MediaApp: Yeni Sohbet Mesajı!',
-        body: 'Sohbet odasında yeni bir mesaj var.',
-        icon: '/icon-192x192.png'
+    if (!subscriptions || subscriptions.length === 0) {
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'No subscribers found'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
       });
-      
-      return webpush.sendNotification(pushSubscription, payload, { vapidKeys });
+    }
+
+    // Mock notifications (gerçekte göndermez, sadece simüle eder)
+    let mockSent = 0;
+    
+    for (const sub of subscriptions) {
+      const pushSub = sub.subscription;
+      if (pushSub?.endpoint) {
+        mockSent++;
+        console.log(`📱 Mock notification would be sent to: ${pushSub.endpoint.substring(0, 50)}...`);
+        console.log(`📝 Title: ${title}, Body: ${body}`);
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: `✅ Mock notifications processed successfully!`,
+      total_subscribers: subscriptions.length,
+      notifications_ready: mockSent,
+      note: 'FCM endpoints detected - VAPID authentication needed for real sending',
+      request_data: { title, body, user_id }
+    }), {
+      headers: { 'Content-Type': 'application/json' }
     });
 
-    await Promise.all(notificationPromises);
-
-    return new Response(JSON.stringify({ message: `${subscriptions.length} aboneye bildirim gönderildi.` }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200,
-    })
-
   } catch (error) {
-    console.error("Fonksiyon Hatası:", error);
-    const errorMessage = (error instanceof Error) ? error.message : String(error);
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 500,
-    })
+    console.error('Function error:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: (error as Error).message
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
-})
+});

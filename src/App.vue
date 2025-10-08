@@ -5,7 +5,7 @@ import Auth from './components/Auth.vue'
 import Posts from './components/Posts.vue'
 import Chat from './components/Chat.vue';
 import MenuButton from './components/MenuButton.vue';
-import NotificationManager from './components/NotificationManager.vue'; // YENİ KOMPONENTİ IMPORT ET
+import NotificationManager from './components/NotificationManager.vue'; // Yeni bildirim yöneticisini import ediyoruz
 import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft } from 'lucide-vue-next'
 import { supabase } from './supabase.js'
 
@@ -44,6 +44,7 @@ function navigateToMenu() {
               <span class="text-white/80 font-semibold text-sm hidden sm:block">{{ session.user.email }}</span>
           </div>
           
+          <!-- Bildirim ve Çıkış butonlarını bir arada grupladık -->
           <div class="flex items-center gap-4">
             <NotificationManager />
             <button @click="supabase.auth.signOut()" class="flex items-center gap-2 text-sm bg-black/30 text-red-400 hover:text-red-500 p-2 rounded-lg">
@@ -81,5 +82,12 @@ function navigateToMenu() {
 </template>
 
 <style>
-/* Style kısmı aynı kalıyor */
+/* Animasyonlar ve genel stiller */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
 </style>
