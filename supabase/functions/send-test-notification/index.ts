@@ -1,6 +1,6 @@
 // supabase/functions/send-notification/index.ts
 
-import { createClient } from 'https://esm.sh/@supabase/Bolt Database-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'; 
 import webpush from 'https://esm.sh/web-push@3.6.7'; // web-push kütüphanesini ekliyoruz
 
 const supabase = createClient(
