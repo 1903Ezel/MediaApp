@@ -1,4 +1,5 @@
-// src/services/notificationService.js
+// src/services/notificationService.js (TAM VE DÜZELTİLMİŞ)
+
 import { supabase } from '../supabase.js'
 
 class NotificationService {
@@ -19,18 +20,15 @@ class NotificationService {
     }
 
     try {
-      // 1. İzin iste
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
         console.log('Bildirim izni reddedildi')
         return false
       }
 
-      // 2. Service Worker'ı kaydet
       this.registration = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
 
-      // 3. Push subscription (abonelik) oluştur
       const subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: this.urlBase64ToUint8Array(
@@ -38,7 +36,7 @@ class NotificationService {
         )
       })
 
-      // 4. Supabase'e kaydet
+      // KRİTİK DÜZELTME: push_subscriptions kullanılıyor
       await this.saveToken(userId, JSON.stringify(subscription), 'web')
 
       console.log('✅ Push bildirimleri aktif!')
@@ -51,7 +49,7 @@ class NotificationService {
     }
   }
 
-  // 💾 Token'ı Veritabanına Kaydet
+  // 💾 Token'ı Veritabanına Kaydet (DÜZELTİLDİ)
   async saveToken(userId, token, platform) {
     const deviceInfo = {
       userAgent: navigator.userAgent,
@@ -59,17 +57,17 @@ class NotificationService {
       language: navigator.language,
     }
 
-    // 'upsert' komutu sayesinde, eğer aynı token zaten varsa üzerine yazar, yoksa yeni kayıt oluşturur.
+    // KRİTİK DÜZELTME: push_subscriptions tablosunu kullanıyoruz
     const { error } = await supabase
-      .from('push_tokens')
+      .from('push_subscriptions') 
       .upsert({
         user_id: userId,
-        token: token,
+        subscription: token, 
         platform: platform,
         device_info: deviceInfo,
         is_active: true
       }, {
-        onConflict: 'token' // Eğer aynı 'token' varsa, çakışmayı bu sütuna göre çöz
+        onConflict: 'subscription' 
       })
 
     if (error) {
@@ -91,5 +89,4 @@ class NotificationService {
   }
 }
 
-// Bu servisin tek bir örneğini oluşturup dışarıya aktarıyoruz
 export default new NotificationService()
