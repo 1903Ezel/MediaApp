@@ -26,10 +26,31 @@ async function sendMessage() {
   if (newMessageContent.value.trim() === '') return;
   const content = newMessageContent.value;
   newMessageContent.value = '';
-  await supabase.from('chat_messages').insert({
+
+  // ⚠️ HATA YAKALAMA MEKANİZMASI: Hatanın detayını Supabase'den alıyoruz
+  const { error } = await supabase.from('chat_messages').insert({
     content: content,
     user_id: session.value.user.id,
   });
+
+  if (error) {
+    // Mesaj gönderme hatasını konsola detaylıca yazdırıyoruz
+    console.error("MESAJ GÖNDERME BAŞARISIZ OLDU:", error);
+    
+    let errorMessage = `Hata Kodu: ${error.code || 'Bilinmiyor'}. Mesaj: ${error.message}`;
+    
+    if (error.status === 404) {
+        errorMessage = "404 Not Found: Tablo adı yanlış olabilir veya RLS engelliyor olabilir. Lütfen RLS'i kontrol edin.";
+    } else if (error.status === 401 || error.code === 'PGRST301') {
+        errorMessage = "401 Yetkisiz: Oturum açık değil veya RLS politikası engelliyor.";
+    }
+
+    alert(`Mesaj gönderilemedi! ${errorMessage}`);
+    // Mesaj içeriğini geri yükleyelim
+    newMessageContent.value = content; 
+  } else {
+    console.log("✅ Mesaj başarıyla gönderildi (veya API tarafından kabul edildi).");
+  }
 }
 
 function scrollToBottom() {
