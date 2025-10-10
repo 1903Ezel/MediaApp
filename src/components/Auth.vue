@@ -13,14 +13,18 @@ const handleAuth = async () => {
     let error = null
 
     if (isRegistering.value) {
-      // Kayıt Ol
+      // 🚨 KAYIT OL (Sign Up) - FlowType Düzeltmesi Buradadır
       ({ error } = await supabase.auth.signUp({
         email: email.value,
-        password: password.value
+        password: password.value,
+        // PKCE flowType'ı eklenerek hatalı akış (flowType) hatası çözülür
+        options: {
+          flowType: 'pkce' 
+        }
       }))
       if (!error) alert('Hesap başarıyla oluşturuldu! Lütfen giriş yapın.')
     } else {
-      // Giriş Yap
+      // GİRİŞ YAP (Sign In)
       ({ error } = await supabase.auth.signInWithPassword({
         email: email.value,
         password: password.value
@@ -80,4 +84,3 @@ const handleAuth = async () => {
     </button>
   </div>
 </template>
-
