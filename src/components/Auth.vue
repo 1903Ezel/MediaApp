@@ -26,6 +26,10 @@ const handleAuth = async () => {
     const { error } = await authFunction({
       email: email.value,
       password: password.value,
+      // 🚨 KRİTİK DÜZELTME: Kayıt olurken flowType ekleniyor
+      // Bu, "Cannot read properties of undefined (reading 'flowType')" hatasını çözer.
+      // PKCE (Proof Key for Code Exchange) akışını kullanır.
+      ...(isRegistering.value && { options: { flowType: 'pkce' } }) 
     })
 
     if (error) throw error
