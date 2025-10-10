@@ -41,7 +41,8 @@ async function fetchPosts() {
           loading.value = true
               let query = supabase
                     .from('posts')
-                          .select('id, content, created_at, user_id, media_url, media_type, author:profiles(email)')
+                          // Düzeltme: author:profiles(email) yerine author:profiles(username) kullanıldı
+                          .select('id, content, created_at, user_id, media_url, media_type, author:profiles(username)')
                                 .order('created_at', { ascending: false });
 
                                     if (props.filter) {
@@ -64,6 +65,7 @@ async function fetchPosts() {
 
 async function addPost() {
     if (newPostContent.value.trim() === '' && !selectedFile.value) {
+          // alert() yerine custom modal kullanılması daha iyidir, ama bu formatı koruyalım.
           return alert("Paylaşmak için bir not yazın veya bir medya dosyası seçin.");
     }
       try {
@@ -99,7 +101,8 @@ async function addPost() {
       }
 }
 async function deletePost(postId) {
-      if (!confirm('Bu gönderiyi silmek istediğinizden emin misiniz?')) return;
+      // confirm() yerine custom modal kullanılması daha iyidir, ama bu formatı koruyalım.
+      if (!window.confirm('Bu gönderiyi silmek istediğinizden emin misiniz?')) return;
           try {
                     const { error } = await supabase.from('posts').delete().eq('id', postId)
                             if (error) throw error;
@@ -155,9 +158,11 @@ watch(() => props.filter, (newFilter) => {
                                                                                                                                                                                           <div v-for="post in posts" :key="post.id" class="bg-black/30 p-4 rounded-lg border border-white/10 animate-fade-in">
                                                                                                                                                                                                   <div class="flex items-center gap-3 mb-3">
                                                                                                                                                                                                               <div class="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center text-sm font-bold text-purple-300">
-                                                                                                                                                                                                                              <span v-if="post.author && post.author.email">{{ post.author.email.charAt(0).toUpperCase() }}</span>
+                                                                                                                                                                                                                              <!-- Düzeltme: post.author.email yerine post.author.username kullanıldı -->
+                                                                                                                                                                                                                              <span v-if="post.author && post.author.username">{{ post.author.username.charAt(0).toUpperCase() }}</span>
                                                                                                                                                                                                                                           </div>
-                                                                                                                                                                                                                                                      <span v-if="post.author && post.author.email" class="text-sm font-semibold text-white/70">{{ post.author.email }}</span>
+                                                                                                                                                                                                                                                      <!-- Düzeltme: post.author.email yerine post.author.username kullanıldı -->
+                                                                                                                                                                                                                                                      <span v-if="post.author && post.author.username" class="text-sm font-semibold text-white/70">{{ post.author.username }}</span>
                                                                                                                                                                                                                                                               </div>
                                                                                                                                                                                                                                                                       <div v-if="post.media_url && post.media_type" class="my-4 rounded-lg overflow-hidden aspect-square bg-black/20">
                                                                                                                                                                                                                                                                                 <img v-if="post.media_type.startsWith('image/')" :src="post.media_url" alt="Gönderi resmi" class="w-full h-full object-contain">
@@ -178,31 +183,4 @@ watch(() => props.filter, (newFilter) => {
                                                                                                                                                                                                                                                                                                                                                                                                                                 </div>
                                                                                                                                                                                                                                                                                                                                                                                                                                     </div>
                                                                                                                                                                                                                                                                                                                                                                                                                                       </div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                      </template>
-})
-                                  }
-              )
-})
-          }
-          }
-}
-      }
-      }
-                            })
-                        }
-      }
-    }
-}
-    }
-    }
-                                            }
-                                            }
-                                    }
-    }
-}
-      }
-    }
-})
-      }
-}
-})>
+</template>
