@@ -9,9 +9,10 @@ const loading = ref(true);
 const messagesContainer = ref(null);
 
 async function fetchMessages() {
+  // İlişki adını (foreign key) user_id yerine sender_id olarak düzeltiyoruz
   const { data, error } = await supabase
     .from('chat_messages')
-    .select('id, content, created_at, author:profiles(email)')
+    .select('id, content, created_at, sender:profiles(email)') // *** Düzeltme: author yerine sender kullanıldı (profiles tablosuna referans) ***
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -27,10 +28,10 @@ async function sendMessage() {
   const content = newMessageContent.value;
   newMessageContent.value = '';
 
-  // ⚠️ HATA YAKALAMA MEKANİZMASI: Hatanın detayını Supabase'den alıyoruz
+  // ⚠️ HATA DÜZELTME: user_id yerine sender_id kullanılıyor
   const { error } = await supabase.from('chat_messages').insert({
     content: content,
-    user_id: session.value.user.id,
+    sender_id: session.value.user.id, // *** Düzeltme: user_id -> sender_id ***
   });
 
   if (error) {
@@ -82,10 +83,11 @@ watch(messages, () => {
     <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-black/20 rounded-t-lg">
       <div v-if="loading" class="text-center text-white/50">Mesajlar yükleniyor...</div>
       <div v-for="message in messages" :key="message.id" 
-           :class="['flex flex-col', message.author && message.author.email === session.user.email ? 'items-end' : 'items-start']">
-        <div :class="['max-w-xs md:max-w-md p-3 rounded-xl', message.author && message.author.email === session.user.email ? 'bg-purple-700' : 'bg-gray-700']">
-          <div v-if="message.author && message.author.email !== session.user.email" class="text-xs text-purple-300 font-semibold mb-1">
-            {{ message.author.email.split('@')[0] }}
+          :class="['flex flex-col', message.sender && message.sender.email === session.user.email ? 'items-end' : 'items-start']">
+        <div :class="['max-w-xs md:max-w-md p-3 rounded-xl', message.sender && message.sender.email === session.user.email ? 'bg-purple-700' : 'bg-gray-700']">
+          <!-- Burada da author yerine sender kullanıldı -->
+          <div v-if="message.sender && message.sender.email !== session.user.email" class="text-xs text-purple-300 font-semibold mb-1">
+            {{ message.sender.email.split('@')[0] }}
           </div>
           <p class="text-white text-sm">{{ message.content }}</p>
         </div>
