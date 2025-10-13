@@ -1,85 +1,169 @@
 // supabase/functions/send-notification/index.ts
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'; 
-import webpush from 'https://esm.sh/web-push@3.6.7'; // web-push kütüphanesini ekliyoruz
+// 🔹 Supabase ve JWT oluşturma için gerekli Deno modüllerini kullanıyoruz.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { create as createJwt, getNumericDate } from "https://deno.land/x/djwt@v3.0.1/mod.ts";
 
+// 🔹 Supabase istemcisi
 const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SERVICE_ROLE_KEY')!,
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } }
 );
 
-// VAPID anahtarlarını ortam değişkenlerinden alıyoruz
-const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!; // Public key'i de alalım
-const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')!;
-const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT')!;
+// 🔹 VAPID ortam değişkenleri
+const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
+const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
+const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT")!;
 
-webpush.setVapidDetails(
-  VAPID_SUBJECT,
-  VAPID_PUBLIC_KEY,
-  VAPID_PRIVATE_KEY
-);
+// 🔹 VAPID detayları
+const vapidDetails = {
+  subject: VAPID_SUBJECT || "mailto:default@example.com",
+  publicKey: VAPID_PUBLIC_KEY,
+  privateKey: VAPID_PRIVATE_KEY,
+};
 
+// ✅ PEM formatındaki özel anahtarı `CryptoKey`’e çevir
+async function getVapidKey(privateKeyPem: string): Promise<CryptoKey> {
+  try {
+    // PEM header/footer ve boşlukları temizle
+    const pemBody = privateKeyPem
+      .replace("-----BEGIN PRIVATE KEY-----", "")
+      .replace("-----END PRIVATE KEY-----", "")
+      .replace(/\s+/g, "");
+
+    // Base64 -> binary
+    const binaryKey = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+
+    // PKCS#8 içe aktar
+    return await crypto.subtle.importKey(
+      "pkcs8",
+      binaryKey,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"]
+    );
+  } catch (e) {
+    console.error("VAPID anahtar içe aktarma başarısız:", e.message);
+    throw new Error("Kritik VAPID Anahtar Hatası: " + e.message);
+  }
+}
+
+// ✅ Bildirim gönderme fonksiyonu
+async function sendPushNotification(pushSub: any, payload: string, vapidKey: CryptoKey) {
+  const subscriptionData = JSON.parse(pushSub.subscription);
+  const endpoint = subscriptionData.endpoint;
+
+  // JWT için 1 saatlik geçerlilik
+  const expiration = getNumericDate(3600);
+
+  const jwtPayload = {
+    aud: new URL(endpoint).origin,
+    exp: expiration,
+    sub: vapidDetails.subject,
+  };
+
+  const jwtHeader = {
+    alg: "ES256" as const,
+    typ: "JWT",
+  };
+
+  // JWT imzası
+  const authToken = await createJwt(jwtHeader, jwtPayload, vapidKey);
+
+  // Başlıklar
+  const headers = {
+    "Content-Type": "application/octet-stream",
+    "Content-Length": new TextEncoder().encode(payload).length.toString(),
+    TTL: "600",
+    Authorization: `WebPush ${authToken}`,
+    "Crypto-Key": `p256dh=${vapidDetails.publicKey}`,
+  };
+
+  // Bildirimi gönder
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: headers,
+    body: payload,
+  });
+
+  if (response.status === 410) {
+    throw { statusCode: 410, message: "Abonelik Geçersiz (410 Gone)" };
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    const errorBody = await response.text();
+    throw {
+      statusCode: response.status,
+      message: `Push servisi hata döndürdü: ${response.status} - ${errorBody}`,
+    };
+  }
+
+  return true;
+}
+
+// ✅ HTTP isteğini işleyen ana handler
 Deno.serve(async (req) => {
   try {
-    const { title, body, user_id, exclude_user_id } = await req.json(); // Gelen veriyi ayrıştır
+    const requestBody = await req.json();
+    const { record } = requestBody;
 
-    // Eğer bir kullanıcı ID'si verilmişse (Chat için), o kullanıcı HARİÇ tüm aboneleri çek.
-    // Veya user_id verilmişse sadece o kullanıcıya ait abonelikleri çekebilirsiniz (Örn: Özel Mesaj)
-    let query = supabase.from('push_subscriptions').select('subscription, user_id');
-
-    if (exclude_user_id) {
-         query = query.neq('user_id', exclude_user_id); // Kendi mesajını kendine bildirme
-    } else if (user_id) {
-         query = query.eq('user_id', user_id); // Tekil kullanıcıya gönderim
+    // Ortam değişkenleri kontrolü
+    if (!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || !VAPID_PRIVATE_KEY || !VAPID_PUBLIC_KEY) {
+      throw new Error("Kritik ortam değişkenleri tanımlı değil.");
     }
 
-    const { data: subscriptions, error } = await query;
+    // PEM formatındaki özel anahtarı içe aktar
+    const vapidKey = await getVapidKey(VAPID_PRIVATE_KEY);
 
-    if (error) throw new Error(`Query error: ${error.message}`);
+    const title = "Yeni Mesaj 💬";
+    const body = `(${record.sender_id.substring(0, 4)}...): ${record.content}`;
+    const exclude_user_id = record.sender_id;
 
+    // Abonelikleri çek (kendisi hariç)
+    const { data: subscriptions, error } = await supabase
+      .from("push_subscriptions")
+      .select("subscription, user_id")
+      .neq("user_id", exclude_user_id);
+
+    if (error) throw new Error(`Veritabanı hatası: ${error.message}`);
+
+    // Bildirim payload
     const payload = JSON.stringify({
-      title: title || 'Yeni Bildirim',
-      body: body || 'Bir güncelleme var!',
-      data: {
-          url: '/', // Bildirime tıklandığında açılacak sayfa
-          time: new Date().toISOString()
-      }
+      title,
+      body,
+      data: { url: "/chat", time: new Date().toISOString() },
     });
 
-    const sendPromises = (subscriptions || []).map(sub => {
+    const sendPromises = (subscriptions || []).map(async (sub) => {
       try {
-        const pushSub = JSON.parse(sub.subscription); // Kayıtlı JSON'u objeye çevir
+        await sendPushNotification(sub, payload, vapidKey);
+        console.log(`✅ Bildirim gönderildi: Kullanıcı ${sub.user_id}`);
+      } catch (err: any) {
+        console.error(`🚫 Gönderim Hatası (Kullanıcı: ${sub.user_id}):`, err.message);
 
-        // Gerçek gönderim burada yapılıyor!
-        return webpush.sendNotification(pushSub, payload)
-          .catch(err => {
-            console.error(`Gönderim Hatası (Kullanıcı: ${sub.user_id}):`, err);
-            // Eğer abonelik sona ermişse, bu aboneliği veritabanından silmek gerekir (UX için önemli)
-            if (err.statusCode === 410) { // 410 Gone: Abonelik artık geçersiz
-                return supabase.from('push_subscriptions').delete().eq('subscription', sub.subscription);
-            }
-          });
-      } catch (e) {
-        console.error('Abonelik JSON parse hatası:', e);
-        return null;
+        // 410 (geçersiz abonelik) ise sil
+        if (err.statusCode === 410) {
+          await supabase.from("push_subscriptions").delete().eq("subscription", sub.subscription);
+          console.log(`🗑 Geçersiz abonelik silindi: ${sub.user_id}`);
+        }
       }
     });
 
     await Promise.allSettled(sendPromises);
 
-    return new Response(JSON.stringify({
-      success: true,
-      message: `✅ Bildirim gönderimi tamamlandı! Toplam deneme: ${sendPromises.length}`,
-    }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-  } catch (error) {
-    console.error("Global Hata:", error);
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Bildirim gönderimi tamamlandı (${sendPromises.length} deneme).`,
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  } catch (error: any) {
+    console.error("Global Hata:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { "Content-Type": "application/json" },
     });
   }
 });
