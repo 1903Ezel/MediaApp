@@ -1,6 +1,6 @@
 // supabase/functions/send-notification/index.ts
 
-// 🔹 Supabase ve JWT oluşturma için gerekli Deno modüllerini kullanıyoruz.
+// 🔹 Supabase ve JWT oluşturma için gerekli modüller
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { create as createJwt, getNumericDate } from "https://deno.land/x/djwt@v3.0.1/mod.ts";
 
@@ -23,30 +23,32 @@ const vapidDetails = {
   privateKey: VAPID_PRIVATE_KEY,
 };
 
-// ✅ Tüm formatları (PEM, Base64, Base64URL) destekleyen VAPID key dönüştürücü
-async function getVapidKey(privateKeyInput: string): Promise<CryptoKey> {
+// ✅ PEM veya Base64URL fark etmeden çözümleyen fonksiyon
+async function getVapidKey(privateKeyRaw: string): Promise<CryptoKey> {
   try {
-    // 1️⃣ PEM başlık/son ve boşlukları temizle
-    let key = privateKeyInput
-      .replace(/-----.*PRIVATE KEY-----/g, "")
-      .replace(/\s+/g, "");
+    let keyBytes: Uint8Array;
 
-    // 2️⃣ Normal Base64'ü Base64URL'e dönüştür
-    key = key.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    if (privateKeyRaw.includes("BEGIN")) {
+      // PEM formatı (çok satırlı)
+      const pemBody = privateKeyRaw
+        .replace("-----BEGIN PRIVATE KEY-----", "")
+        .replace("-----END PRIVATE KEY-----", "")
+        .replace(/\s+/g, "");
+      keyBytes = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+    } else {
+      // Base64URL formatı (tek satır)
+      const base64 = privateKeyRaw.replace(/-/g, "+").replace(/_/g, "/");
+      keyBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    }
 
-    // 3️⃣ Base64URL çöz
-    const base64 = key.replace(/-/g, "+").replace(/_/g, "/");
-    const binaryKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-
-    // 4️⃣ PKCS#8 içe aktar (ECDSA P-256)
     return await crypto.subtle.importKey(
       "pkcs8",
-      binaryKey,
+      keyBytes.buffer,
       { name: "ECDSA", namedCurve: "P-256" },
       true,
       ["sign"]
     );
-  } catch (e) {
+  } catch (e: any) {
     console.error("VAPID anahtar içe aktarma başarısız:", e.message);
     throw new Error("Kritik VAPID Anahtar Hatası: " + e.message);
   }
@@ -111,19 +113,17 @@ Deno.serve(async (req) => {
     const requestBody = await req.json();
     const { record } = requestBody;
 
-    // Ortam değişkenleri kontrolü
     if (!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || !VAPID_PRIVATE_KEY || !VAPID_PUBLIC_KEY) {
       throw new Error("Kritik ortam değişkenleri tanımlı değil.");
     }
 
-    // VAPID özel anahtarını dönüştür
+    // Anahtarı formatına göre içe aktar
     const vapidKey = await getVapidKey(VAPID_PRIVATE_KEY);
 
     const title = "Yeni Mesaj 💬";
     const body = `(${record.sender_id.substring(0, 4)}...): ${record.content}`;
     const exclude_user_id = record.sender_id;
 
-    // Abonelikleri çek (kendisi hariç)
     const { data: subscriptions, error } = await supabase
       .from("push_subscriptions")
       .select("subscription, user_id")
@@ -131,7 +131,6 @@ Deno.serve(async (req) => {
 
     if (error) throw new Error(`Veritabanı hatası: ${error.message}`);
 
-    // Bildirim payload
     const payload = JSON.stringify({
       title,
       body,
@@ -144,8 +143,6 @@ Deno.serve(async (req) => {
         console.log(`✅ Bildirim gönderildi: Kullanıcı ${sub.user_id}`);
       } catch (err: any) {
         console.error(`🚫 Gönderim Hatası (Kullanıcı: ${sub.user_id}):`, err.message);
-
-        // 410 (geçersiz abonelik) ise sil
         if (err.statusCode === 410) {
           await supabase.from("push_subscriptions").delete().eq("subscription", sub.subscription);
           console.log(`🗑 Geçersiz abonelik silindi: ${sub.user_id}`);
