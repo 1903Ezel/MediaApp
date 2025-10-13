@@ -23,19 +23,22 @@ const vapidDetails = {
   privateKey: VAPID_PRIVATE_KEY,
 };
 
-// ✅ PEM formatındaki özel anahtarı `CryptoKey`’e çevir
-async function getVapidKey(privateKeyPem: string): Promise<CryptoKey> {
+// ✅ Tüm formatları (PEM, Base64, Base64URL) destekleyen VAPID key dönüştürücü
+async function getVapidKey(privateKeyInput: string): Promise<CryptoKey> {
   try {
-    // PEM header/footer ve boşlukları temizle
-    const pemBody = privateKeyPem
-      .replace("-----BEGIN PRIVATE KEY-----", "")
-      .replace("-----END PRIVATE KEY-----", "")
+    // 1️⃣ PEM başlık/son ve boşlukları temizle
+    let key = privateKeyInput
+      .replace(/-----.*PRIVATE KEY-----/g, "")
       .replace(/\s+/g, "");
 
-    // Base64 -> binary
-    const binaryKey = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+    // 2️⃣ Normal Base64'ü Base64URL'e dönüştür
+    key = key.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-    // PKCS#8 içe aktar
+    // 3️⃣ Base64URL çöz
+    const base64 = key.replace(/-/g, "+").replace(/_/g, "/");
+    const binaryKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+
+    // 4️⃣ PKCS#8 içe aktar (ECDSA P-256)
     return await crypto.subtle.importKey(
       "pkcs8",
       binaryKey,
@@ -113,7 +116,7 @@ Deno.serve(async (req) => {
       throw new Error("Kritik ortam değişkenleri tanımlı değil.");
     }
 
-    // PEM formatındaki özel anahtarı içe aktar
+    // VAPID özel anahtarını dönüştür
     const vapidKey = await getVapidKey(VAPID_PRIVATE_KEY);
 
     const title = "Yeni Mesaj 💬";
