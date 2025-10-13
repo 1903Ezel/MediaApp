@@ -8,7 +8,28 @@
     <meta name="theme-color" content="#8b5cf6">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <title>MediaApp - Multimedya Platformu</title>
-  </head>
+
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          // ⚠️ LÜTFEN KONTROL EDİN: Bu App ID sizin gerçek App ID'niz olmalı
+          appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", 
+        });
+
+        // 🎯 ÖNEMLİ ADIM: KULLANICIYI EŞLEŞTİRME
+        // Supabase ile giriş yapan kullanıcıyı OneSignal'a tanıtmak için bu kodu kullanın.
+        // Bu kod, kullanıcınızın kimlik doğrulama sürecinden (login) SONRA çalışmalıdır.
+
+        // ÖRNEK:
+        // const { data: { user } } = await supabase.auth.getUser();
+        // if (user) {
+        //     OneSignal.setExternalUserId(user.id);
+        // }
+      });
+    </script>
+    </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>

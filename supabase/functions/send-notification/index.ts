@@ -1,169 +1,145 @@
-// supabase/functions/send-notification/index.ts
+import { serve } from "https://deno.land/std@0.176.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
 
-// 🔹 Supabase ve JWT oluşturma için gerekli modüller
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { create as createJwt, getNumericDate } from "https://deno.land/x/djwt@v3.0.1/mod.ts";
+console.log("Hello from the Edge Function!")
 
-// 🔹 Supabase istemcisi
+// OneSignal API endpoint ve anahtarları ortam değişkenlerinden alınıyor
+const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID")
+const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_API_KEY")
+
+// Ortam değişkenleri kontrolü
+if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
+  throw new Error("ONESIGNAL_APP_ID or ONESIGNAL_API_KEY is not set in Supabase Secrets.")
+}
+
 const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  { auth: { persistSession: false } }
-);
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+)
 
-// 🔹 VAPID ortam değişkenleri
-const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
-const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
-const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT")!;
-
-// 🔹 VAPID detayları
-const vapidDetails = {
-  subject: VAPID_SUBJECT || "mailto:default@example.com",
-  publicKey: VAPID_PUBLIC_KEY,
-  privateKey: VAPID_PRIVATE_KEY,
-};
-
-// ✅ PEM veya Base64URL fark etmeden çözümleyen fonksiyon
-async function getVapidKey(privateKeyRaw: string): Promise<CryptoKey> {
-  try {
-    let keyBytes: Uint8Array;
-
-    if (privateKeyRaw.includes("BEGIN")) {
-      // PEM formatı (çok satırlı)
-      const pemBody = privateKeyRaw
-        .replace("-----BEGIN PRIVATE KEY-----", "")
-        .replace("-----END PRIVATE KEY-----", "")
-        .replace(/\s+/g, "");
-      keyBytes = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-    } else {
-      // Base64URL formatı (tek satır)
-      const base64 = privateKeyRaw.replace(/-/g, "+").replace(/_/g, "/");
-      keyBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+// Tüm kullanıcıların ID'lerini çeken fonksiyon
+async function getAllUserIds(senderId: string): Promise<string[]> {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .neq('id', senderId) // Gönderen hariç tüm kullanıcıları çek
+    
+    if (error) {
+        console.error("Error fetching user IDs:", error.message)
+        return []
     }
-
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      keyBytes.buffer,
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign"]
-    );
-  } catch (e: any) {
-    console.error("VAPID anahtar içe aktarma başarısız:", e.message);
-    throw new Error("Kritik VAPID Anahtar Hatası: " + e.message);
-  }
+    
+    // Sadece ID dizisini döndür
+    return data.map(profile => profile.id)
 }
 
-// ✅ Bildirim gönderme fonksiyonu
-async function sendPushNotification(pushSub: any, payload: string, vapidKey: CryptoKey) {
-  const subscriptionData = JSON.parse(pushSub.subscription);
-  const endpoint = subscriptionData.endpoint;
-
-  // JWT için 1 saatlik geçerlilik
-  const expiration = getNumericDate(3600);
-
-  const jwtPayload = {
-    aud: new URL(endpoint).origin,
-    exp: expiration,
-    sub: vapidDetails.subject,
-  };
-
-  const jwtHeader = {
-    alg: "ES256" as const,
-    typ: "JWT",
-  };
-
-  // JWT imzası
-  const authToken = await createJwt(jwtHeader, jwtPayload, vapidKey);
-
-  // Başlıklar
-  const headers = {
-    "Content-Type": "application/octet-stream",
-    "Content-Length": new TextEncoder().encode(payload).length.toString(),
-    TTL: "600",
-    Authorization: `WebPush ${authToken}`,
-    "Crypto-Key": `p256dh=${vapidDetails.publicKey}`,
-  };
-
-  // Bildirimi gönder
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: headers,
-    body: payload,
-  });
-
-  if (response.status === 410) {
-    throw { statusCode: 410, message: "Abonelik Geçersiz (410 Gone)" };
-  }
-
-  if (response.status < 200 || response.status >= 300) {
-    const errorBody = await response.text();
-    throw {
-      statusCode: response.status,
-      message: `Push servisi hata döndürdü: ${response.status} - ${errorBody}`,
-    };
-  }
-
-  return true;
-}
-
-// ✅ HTTP isteğini işleyen ana handler
-Deno.serve(async (req) => {
-  try {
-    const requestBody = await req.json();
-    const { record } = requestBody;
-
-    if (!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || !VAPID_PRIVATE_KEY || !VAPID_PUBLIC_KEY) {
-      throw new Error("Kritik ortam değişkenleri tanımlı değil.");
+// OneSignal'a bildirim gönderen ana fonksiyon
+async function sendNotification(data: { contents: any, include_external_user_ids: string[] }) {
+    
+    if (data.include_external_user_ids.length === 0) {
+        console.log("No recipients found to send notification.")
+        return { status: 200, message: "No recipients found, notification skipped." }
     }
 
-    // Anahtarı formatına göre içe aktar
-    const vapidKey = await getVapidKey(VAPID_PRIVATE_KEY);
+    const payload = {
+        app_id: ONESIGNAL_APP_ID,
+        ...data,
+        // Genel Sohbet için:
+        channel_for_external_user_ids: "push",
+        headings: { en: "Yeni Genel Sohbet Mesajı" },
+    }
 
-    const title = "Yeni Mesaj 💬";
-    const body = `(${record.sender_id.substring(0, 4)}...): ${record.content}`;
-    const exclude_user_id = record.sender_id;
+    try {
+        const response = await fetch("https://onesignal.com/api/v1/notifications", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                // API key, Secret'tan alındığı için Basic Auth kullanılıyor
+                "Authorization": `Basic ${ONESIGNAL_API_KEY}`, 
+            },
+            body: JSON.stringify(payload),
+        })
 
-    const { data: subscriptions, error } = await supabase
-      .from("push_subscriptions")
-      .select("subscription, user_id")
-      .neq("user_id", exclude_user_id);
-
-    if (error) throw new Error(`Veritabanı hatası: ${error.message}`);
-
-    const payload = JSON.stringify({
-      title,
-      body,
-      data: { url: "/chat", time: new Date().toISOString() },
-    });
-
-    const sendPromises = (subscriptions || []).map(async (sub) => {
-      try {
-        await sendPushNotification(sub, payload, vapidKey);
-        console.log(`✅ Bildirim gönderildi: Kullanıcı ${sub.user_id}`);
-      } catch (err: any) {
-        console.error(`🚫 Gönderim Hatası (Kullanıcı: ${sub.user_id}):`, err.message);
-        if (err.statusCode === 410) {
-          await supabase.from("push_subscriptions").delete().eq("subscription", sub.subscription);
-          console.log(`🗑 Geçersiz abonelik silindi: ${sub.user_id}`);
+        if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`OneSignal API error: ${response.status} - ${errorText}`)
+            return { status: 500, message: `Failed to send notification via OneSignal: ${errorText.substring(0, 100)}` }
         }
-      }
-    });
 
-    await Promise.allSettled(sendPromises);
+        const result = await response.json()
+        console.log("Notification sent successfully:", result)
+        return { status: 200, message: "Notification sent successfully" }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Bildirim gönderimi tamamlandı (${sendPromises.length} deneme).`,
-      }),
-      { headers: { "Content-Type": "application/json" } }
-    );
-  } catch (error: any) {
-    console.error("Global Hata:", error.message);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-});
+    } catch (e) {
+        console.error("Error during OneSignal fetch:", e.message)
+        return { status: 500, message: "Internal server error during notification send." }
+    }
+}
+
+serve(async (req) => {
+    try {
+        const { record } = await req.json()
+
+        if (!record) {
+            return new Response(
+                JSON.stringify({ message: "Invalid payload: 'record' missing." }),
+                { status: 400, headers: { "Content-Type": "application/json" } }
+            )
+        }
+
+        const senderId = record.sender_id
+        const recipientId = record.recipient_id 
+        const messageContent = record.content
+
+        // Eğer recipientId NULL ise, genel sohbet odası mantığını uyguluyoruz
+        if (recipientId === null) {
+            console.log("Recipient ID is NULL. Sending to all users except sender.")
+
+            // 1. Gönderen hariç tüm kullanıcı ID'lerini çek
+            const allRecipientIds = await getAllUserIds(senderId)
+
+            if (allRecipientIds.length === 0) {
+                return new Response(
+                    JSON.stringify({ message: "No other users found." }),
+                    { status: 200, headers: { "Content-Type": "application/json" } }
+                )
+            }
+            
+            // 2. Bildirim içeriği
+            // Sender username değeri SQL trigger'dan geliyor.
+            const senderUsername = record.sender?.username || 'Anonim Kullanıcı'
+
+            const contents = {
+                en: `${senderUsername} yeni bir genel mesaj gönderdi: "${messageContent.substring(0, 50)}..."`,
+            }
+
+            // 3. OneSignal'a gönder
+            const result = await sendNotification({
+                contents: contents,
+                include_external_user_ids: allRecipientIds, // Tüm alıcılar
+            })
+            
+            return new Response(
+                JSON.stringify(result),
+                { status: result.status, headers: { "Content-Type": "application/json" } }
+            )
+
+        } else {
+            // Birebir sohbet senaryosu (şuan kullanılmıyor ama mantık burada kalıyor)
+            console.log(`Recipient ID found: ${recipientId}. Sending P2P notification.`)
+            // ... (P2P mantığı)
+            return new Response(
+                JSON.stringify({ message: "P2P logic skipped for general chat." }),
+                { status: 200, headers: { "Content-Type": "application/json" } }
+            )
+        }
+
+
+    } catch (e) {
+        console.error(`Edge function error: ${e.message}`)
+        return new Response(
+            JSON.stringify({ error: e.message }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
+        )
+    }
+})

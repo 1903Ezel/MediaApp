@@ -4,6 +4,9 @@ import { supabase } from '../supabase.js';
 import { session } from '../store.js';
 import { Send } from 'lucide-vue-next';
 
+// 1. Birebir sohbet için tanımlanan prop'lar artık genel sohbet odasında gerekli değildir. Kaldırılıyor.
+// const props = defineProps({ ... });
+
 const loading = ref(true);
 const messages = ref([]);
 const newMessage = ref('');
@@ -13,10 +16,10 @@ async function fetchMessages() {
     try {
         loading.value = true;
         
-        // KRİTİK DÜZELTME: sender:profiles(email) yerine sender:profiles(username) kullanıldı
+        // KRİTİK: Tüm mesajları çekmeye devam ediyoruz (Genel Sohbet Odası)
         const { data, error } = await supabase
             .from('chat_messages')
-            .select('id, content, created_at, sender:profiles(username)')
+            .select('id, content, created_at, sender:profiles(username, id)')
             .order('created_at', { ascending: true });
         
         if (error) throw error;
@@ -24,7 +27,6 @@ async function fetchMessages() {
 
     } catch (error) {
         console.error('Mesajlar çekilirken hata:', error);
-        // alert(`Mesajlar çekilirken hata: ${error.message}`);
     } finally {
         loading.value = false;
         scrollToBottom();
@@ -34,12 +36,16 @@ async function fetchMessages() {
 async function addMessage() {
     if (newMessage.value.trim() === '') return;
 
+    // 🚨 KRİTİK DÜZELTME: Artık recipient_id alanını bilinçli olarak göndermiyoruz. 
+    // Bu alan veritabanında NULL kalacak, bu da Edge Function için "GENEL BİLDİRİM" sinyali olacak.
+    
     try {
         const { error } = await supabase
             .from('chat_messages')
-            .insert({ 
-                content: newMessage.value, 
-                sender_id: session.value.user.id 
+            .insert({ 
+                content: newMessage.value, 
+                sender_id: session.value.user.id
+                // recipient_id BURADAN KALDIRILDI. NULL olarak kaydedilecek.
             });
 
         if (error) throw error;
@@ -47,14 +53,13 @@ async function addMessage() {
 
     } catch (error) {
         console.error('Mesaj gönderilirken hata:', error.message);
-        alert('Mesaj gönderilirken bir hata oluştu: ' + error.message);
+        // alert('Mesaj gönderilirken bir hata oluştu: ' + error.message);
     }
 }
 
 function scrollToBottom() {
     // Mesajlar yüklendikten veya eklendikten sonra en alta kaydır
     if (chatContainer.value) {
-        // nextTick yerine basit bir setTimeout kullanmak daha garanti
         setTimeout(() => {
              chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
         }, 50);
@@ -71,10 +76,7 @@ onMounted(() => {
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'chat_messages' },
             (payload) => {
-                // Yeni mesajı direkt listeye ekle, tekrar çekmeye gerek kalmasın.
-                // Payload'da sadece id ve sender_id olduğu için tam bilgiyi çekmek gerekebilir.
-                // Ancak basitleştirmek adına sadece fetchMessages'ı çağırıyoruz.
-                fetchMessages(); 
+                fetchMessages(); 
             }
         )
         .subscribe();
@@ -85,30 +87,33 @@ watch(messages, scrollToBottom, { deep: true });
 
 <template>
     <div class="bg-black/40 rounded-xl p-4 flex flex-col h-full shadow-2xl backdrop-blur-sm border border-purple-500/30">
-        <h2 class="text-2xl font-bold text-white mb-4 border-b border-white/10 pb-2">Anlık Sohbet Odası</h2>
+        <!-- Başlık sabit "Anlık Sohbet Odası" olarak kalıyor -->
+        <h2 class="text-2xl font-bold text-white mb-4 border-b border-white/10 pb-2">
+            Anlık Sohbet Odası
+        </h2>
         
         <!-- Mesaj Listesi -->
         <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
             <div v-if="loading" class="text-white/50 text-center py-8">Mesajlar yükleniyor...</div>
             <div v-else-if="messages.length === 0" class="text-white/50 text-center py-8">Henüz mesaj yok. İlk mesajı sen gönder!</div>
 
-            <div v-for="message in messages" :key="message.id" class="flex" :class="{'justify-end': message.sender.username === session.user.user_metadata.username}">
+            <div v-for="message in messages" :key="message.id" class="flex" :class="{'justify-end': message.sender.username === session.value.user.user_metadata.username}">
                 
                 <div 
                     class="max-w-[80%] p-3 rounded-xl shadow-md transition-all duration-200"
                     :class="{
-                        'bg-purple-600 text-white rounded-br-none': message.sender.username === session.user.user_metadata.username,
-                        'bg-gray-700 text-white rounded-bl-none': message.sender.username !== session.user.user_metadata.username
+                        'bg-purple-600 text-white rounded-br-none': message.sender.username === session.value.user.user_metadata.username,
+                        'bg-gray-700 text-white rounded-bl-none': message.sender.username !== session.value.user.user_metadata.username
                     }"
                 >
                     <div class="text-xs font-semibold mb-1"
-                        :class="{'text-purple-200': message.sender.username === session.user.user_metadata.username, 'text-gray-300': message.sender.username !== session.user.user_metadata.username}">
+                        :class="{'text-purple-200': message.sender.username === session.value.user.user_metadata.username, 'text-gray-300': message.sender.username !== session.value.user.user_metadata.username}">
                         <!-- KRİTİK DÜZELTME: message.sender.email yerine message.sender.username kullanıldı -->
                         {{ message.sender.username || 'Bilinmeyen Kullanıcı' }}
                     </div>
                     <p class="whitespace-pre-wrap">{{ message.content }}</p>
                     <div class="text-[10px] text-right mt-1"
-                        :class="{'text-purple-300': message.sender.username === session.user.user_metadata.username, 'text-gray-400': message.sender.username !== session.user.user_metadata.username}">
+                        :class="{'text-purple-300': message.sender.username === session.value.user.user_metadata.username, 'text-gray-400': message.sender.username !== session.value.user.user_metadata.username}">
                         {{ new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) }}
                     </div>
                 </div>

@@ -1,15 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Tarayıcı ortamının fetch desteğini kontrol etme (Hata çözümü için kritik)
-// Eğer fetch yoksa, bir polyfill sağlamak gerekebilir.
-const SUPABASE_OPTIONS = (typeof fetch === 'undefined') ? {
-  // Eğer fetch tanımsızsa (bazı eski ortamlarda),
-  // bu, istemcinin doğru şekilde başlatılmasını sağlar.
-  // Çoğu modern tarayıcıda bu kontrol gerekmese de,
-  // aldığınız "fetch" hatası nedeniyle eklenmiştir.
-} : {};
+// Supabase URL'si doğrudan kodlandı (404 hatasını önlemek için)
+const supabaseUrl = 'https://hjgwmynfabnztfzaotkh.supabase.co'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// 🚨 ÖNEMLİ: Bu alana kendi Anon (Public) Anahtarınızı yazmalısınız.
+// Supabase panelinizden (Settings -> API) kopyalayın.
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqZ3dteW5mYWJuenRmemFvdGtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjAyNDksImV4cCI6MjA3NTU5NjI0OX0.sNyAQS5xKYp7C35HrfhpQ1k9h4pakLdV0Rx6tacCYyU'; 
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, SUPABASE_OPTIONS)
+const SUPABASE_OPTIONS = (typeof fetch === 'undefined') ? {} : {};
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, SUPABASE_OPTIONS);
