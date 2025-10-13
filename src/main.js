@@ -2,40 +2,45 @@ import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
 
-// 👇 ADIM 1: SUPABASE CLIENT'INIZI BURADAN İÇERİ AKTARIYORUZ
-// Supabase dosyanızdan 'supabase' değişkenini içeri aktarıyoruz.
-// Eğer dosyanızın yolu bu değilse, import yolunu düzenlemeyi unutmayın!
-import { supabase } from './supabaseClient'; // Varsayım: src/supabaseClient.js
+// 👇 Supabase Client (kendi yoluna göre düzenli)
+import { supabase } from './supabaseClient'
 
-// ⚠️ ÖNEMLİ: OneSignal eşleştirme mantığı
+// 👇 OneSignal SDK'yı yükle (önce index.html'e script eklenecek)
+import { initOneSignal } from './onesignal'
+
+// Vue uygulaması
+const app = createApp(App)
+
+/**
+ * OneSignal entegrasyonu
+ * - Kullanıcı oturumu varsa, OneSignal ile eşleştir
+ * - Yoksa sadece SDK yüklenir ama kullanıcı ilişkilendirilmez
+ */
 async function setupOneSignalUser() {
-    
-    // 1. Supabase'den mevcut oturumu kontrol et
-    // Gerçek Supabase oturum kontrolünü kullanıyoruz.
-    const { data: { user } } = await supabase.auth.getUser();
+  try {
+    // 1️⃣ OneSignal SDK yüklenmesini bekle
+    await initOneSignal()
 
-    // 2. Kullanıcı oturum açmışsa ve OneSignal yüklenmişse devam et
-    if (user && window.OneSignalDeferred) {
-        const supabaseUserId = user.id;
+    // 2️⃣ Supabase'den mevcut kullanıcıyı al
+    const { data: { user } } = await supabase.auth.getUser()
 
-        // OneSignal SDK'sının yüklenmesini bekleyin ve eşleştirme yapın
-        window.OneSignalDeferred.push(function(OneSignal) {
-            
-            // KRİTİK EŞLEŞTİRME ADIMI: Supabase ID'si ile OneSignal'ı ilişkilendirir
-            OneSignal.setExternalUserId(supabaseUserId);
-            console.log("OneSignal: Supabase User ID başarıyla eşleştirildi:", supabaseUserId);
-            
-            // Eğer isterseniz, kullanıcının cihazına ilk kez izin isteğini gösterin
-            // OneSignal.showSlidedownPrompt();
-        });
+    // 3️⃣ Kullanıcı varsa, OneSignal external_user_id olarak ayarla
+    if (user) {
+      const userId = user.id
+      window.OneSignal.push(() => {
+        window.OneSignal.setExternalUserId(userId)
+        console.log("✅ OneSignal eşleştirildi:", userId)
+      })
     } else {
-        console.log("OneSignal eşleştirmesi atlandı: Kullanıcı oturumu bulunamadı.");
+      console.log("ℹ️ Giriş yapılmamış, OneSignal eşleştirmesi atlandı.")
     }
+  } catch (err) {
+    console.error("❌ OneSignal başlatma hatası:", err)
+  }
 }
 
-// Uygulama başlatılmadan önce (veya hemen sonra) OneSignal kurulumunu başlat
-setupOneSignalUser();
+// Vue uygulamasını başlatmadan hemen önce OneSignal kur
+setupOneSignalUser()
 
-
-// Vue Uygulamasını başlat
-createApp(App).mount('#app')
+// Vue mount
+app.mount('#app')

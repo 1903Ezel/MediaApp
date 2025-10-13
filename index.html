@@ -9,29 +9,38 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <title>MediaApp - Multimedya Platformu</title>
 
+    <!-- ✅ OneSignal Web SDK (v16, modern sürüm) -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+
+    <!-- ✅ OneSignal başlangıç ayarları -->
     <script>
+      // OneSignal için global deferred dizisi tanımlanır
       window.OneSignalDeferred = window.OneSignalDeferred || [];
+
       OneSignalDeferred.push(async function(OneSignal) {
         await OneSignal.init({
-          // ⚠️ LÜTFEN KONTROL EDİN: Bu App ID sizin gerçek App ID'niz olmalı
-          appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", 
+          appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // 🔹 Senin gerçek OneSignal App ID'n
+          safari_web_id: "", // (Safari desteği yoksa boş bırak)
+          notifyButton: { enable: true },
+          allowLocalhostAsSecureOrigin: true, // localhost testlerinde gerekli
         });
 
-        // 🎯 ÖNEMLİ ADIM: KULLANICIYI EŞLEŞTİRME
-        // Supabase ile giriş yapan kullanıcıyı OneSignal'a tanıtmak için bu kodu kullanın.
-        // Bu kod, kullanıcınızın kimlik doğrulama sürecinden (login) SONRA çalışmalıdır.
+        console.log("🚀 OneSignal SDK yüklendi ve başlatıldı");
 
-        // ÖRNEK:
-        // const { data: { user } } = await supabase.auth.getUser();
-        // if (user) {
-        //     OneSignal.setExternalUserId(user.id);
-        // }
+        // 📩 Bildirim izni yoksa iste
+        const permission = await OneSignal.Notifications.permission;
+        if (permission !== 'granted') {
+          console.log("🔔 Bildirim izni isteme ekranı gösteriliyor...");
+          await OneSignal.Slidedown.promptPush();
+        }
       });
     </script>
-    </head>
+  </head>
+
   <body>
     <div id="app"></div>
+
+    <!-- Vue ana uygulaması -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
