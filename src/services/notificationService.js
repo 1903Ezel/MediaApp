@@ -1,92 +1,93 @@
-// src/services/notificationService.js (TAM VE DÜZELTİLMİŞ)
-
+// src/services/notificationService.js
 import { supabase } from '../supabase.js'
 
 class NotificationService {
   constructor() {
-    this.registration = null
+    this.oneSignalReady = false;
   }
 
-  // 🔔 Web Push İzni Al ve Token Kaydet
+  // 🔧 OneSignal hazır mı kontrol et
+  async waitForOneSignal() {
+    return new Promise((resolve) => {
+      if (this.oneSignalReady) return resolve(window.OneSignal);
+
+      const interval = setInterval(() => {
+        if (window.OneSignalDeferred) {
+          window.OneSignalDeferred.push(async (OneSignal) => {
+            this.oneSignalReady = true;
+            clearInterval(interval);
+            resolve(OneSignal);
+          });
+        }
+      }, 300);
+    });
+  }
+
+  // 🔔 OneSignal Üzerinden Push İzni Al
   async requestPermission(userId) {
-    if (!('Notification' in window)) {
-      console.warn('Bu tarayıcı bildirimleri desteklemiyor')
-      return false
-    }
-
-    if (!('serviceWorker' in navigator)) {
-      console.warn('Service Worker desteklenmiyor')
-      return false
-    }
-
     try {
-      const permission = await Notification.requestPermission()
+      const OneSignal = await this.waitForOneSignal();
+
+      console.log("🔔 OneSignal başlatılıyor...");
+      const permission = await OneSignal.Notifications.requestPermission();
+
       if (permission !== 'granted') {
-        console.log('Bildirim izni reddedildi')
-        return false
+        console.warn("❌ Kullanıcı bildirim izni vermedi.");
+        return false;
       }
 
-      this.registration = await navigator.serviceWorker.register('/sw.js')
-      await navigator.serviceWorker.ready
+      console.log("✅ Bildirim izni verildi!");
 
-      const subscription = await this.registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: this.urlBase64ToUint8Array(
-          import.meta.env.VITE_VAPID_PUBLIC_KEY
-        )
-      })
+      // Kullanıcıyı OneSignal'a kaydet
+      await OneSignal.setExternalUserId(userId);
+      const deviceId = await OneSignal.User.PushSubscription.id;
 
-      // KRİTİK DÜZELTME: push_subscriptions kullanılıyor
-      await this.saveToken(userId, JSON.stringify(subscription), 'web')
+      if (!deviceId) {
+        console.warn("⚠️ Cihaz ID alınamadı, kullanıcı kaydedilmemiş olabilir.");
+        return false;
+      }
 
-      console.log('✅ Push bildirimleri aktif!')
-      alert("Bildirimlere başarıyla abone olundu!");
-      return true
+      console.log("📱 OneSignal cihaz ID:", deviceId);
 
-    } catch (error) {
-      console.error('Push bildirim hatası:', error)
-      return false
+      // Supabase'e kaydet
+      await this.saveSubscription(userId, deviceId, 'web');
+
+      alert("✅ Bildirimlere başarıyla abone olundu!");
+      return true;
+
+    } catch (err) {
+      console.error("❌ Push aboneliği hatası:", err);
+      return false;
     }
   }
 
-  // 💾 Token'ı Veritabanına Kaydet (DÜZELTİLDİ)
-  async saveToken(userId, token, platform) {
+  // 💾 Supabase'e kaydet
+  async saveSubscription(userId, playerId, platform) {
     const deviceInfo = {
       userAgent: navigator.userAgent,
       platform: navigator.platform,
       language: navigator.language,
-    }
+    };
 
-    // KRİTİK DÜZELTME: push_subscriptions tablosunu kullanıyoruz
     const { error } = await supabase
-      .from('push_subscriptions') 
+      .from('push_subscriptions')
       .upsert({
         user_id: userId,
-        subscription: token, 
+        subscription: playerId, // OneSignal player ID
         platform: platform,
         device_info: deviceInfo,
         is_active: true
       }, {
-        onConflict: 'subscription' 
-      })
+        onConflict: 'subscription'
+      });
 
     if (error) {
-      console.error('Token kaydetme hatası:', error)
-      throw error
+      console.error("Supabase token kaydetme hatası:", error);
+      throw error;
     }
-  }
 
-  // 🔧 Helper: VAPID Public Key'i doğru formata çeviren fonksiyon
-  urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4)
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-    const rawData = window.atob(base64)
-    const outputArray = new Uint8Array(rawData.length)
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i)
-    }
-    return outputArray
+    console.log("💾 Supabase push_subscriptions tablosuna kaydedildi.");
   }
 }
 
-export default new NotificationService()
+export default new NotificationService();

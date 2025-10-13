@@ -1,62 +1,77 @@
-// public/sw.js
+// ✅ /public/sw.js
 
-// Service Worker yüklendiğinde tetiklenir
+// 🔹 Service Worker yüklenince
 self.addEventListener('install', (event) => {
-  console.log('✅ Service Worker yüklendi');
-  // Yeni Service Worker'ın beklemeden hemen aktif olmasını sağlar
-  self.skipWaiting();
+  console.log('✅ [SW] Yüklendi');
+  self.skipWaiting(); // Yeni SW hemen aktif olsun
 });
 
-// Service Worker aktif olduğunda tetiklenir
+// 🔹 Aktif olduğunda
 self.addEventListener('activate', (event) => {
-  console.log('✅ Service Worker aktif');
-  // Tüm açık sekmelerin kontrolünü bu Service Worker'a devreder
+  console.log('✅ [SW] Aktif');
   event.waitUntil(clients.claim());
 });
 
-// 🔔 Sunucudan bir PUSH bildirimi geldiğinde bu olay tetiklenir
+// 🔔 PUSH bildirim geldiğinde
 self.addEventListener('push', (event) => {
   if (!event.data) {
-    console.log("Push event'i veri içermiyor.");
+    console.warn("[SW] Push olayı veri içermiyor.");
     return;
   }
 
-  const data = event.data.json();
-  
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch (err) {
+    console.error("[SW] Push verisi JSON formatında değil:", err);
+    return;
+  }
+
+  const title = data.title || 'Yeni Bildirim';
   const options = {
-    body: data.body,
-    icon: data.icon || '/icon-192x192.png', // Varsayılan ikon
-    badge: data.badge || '/icon-192x192.png', // Android için küçük ikon
-    vibrate: [200, 100, 200], // Titreşim deseni
-    tag: data.data?.id || 'notification', // Aynı ID'li bildirimleri gruplar
-    data: data.data, // Bildirime tıklanınca kullanılacak ekstra veri
+    body: data.body || 'Bir mesajınız var!',
+    icon: data.icon || '/favicon.svg',
+    badge: data.badge || '/favicon.svg',
+    vibrate: [200, 100, 200],
+    tag: data.tag || 'general',
+    data: {
+      url: data.url || '/', // Bildirime tıklanınca açılacak sayfa
+      ...data.data
+    },
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(title, options)
   );
 });
 
-// 👆 Kullanıcı bir bildirime tıkladığında bu olay tetiklenir
+// 👆 Kullanıcı bildirime tıklarsa
 self.addEventListener('notificationclick', (event) => {
-  // Bildirimi kapat
+  console.log("[SW] Bildirime tıklandı");
   event.notification.close();
 
-  // Uygulamayı aç veya odaktaki sekmeye geç
+  const targetUrl = event.notification.data?.url || '/';
+  
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // Eğer uygulama zaten bir sekmede açıksa, o sekmeye odaklan
         for (let client of clientList) {
-          if ('focus' in client) {
-            return client.focus();
+          // Eğer uygulama zaten açık bir sekmede ise, o sekmeye odaklan
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            client.focus();
+            client.postMessage({ type: 'notification-click', data: event.notification.data });
+            return;
           }
         }
-        // Eğer uygulama açık değilse, yeni bir pencerede aç
+        // Eğer açık sekme yoksa yeni sekme aç
         if (clients.openWindow) {
-          const url = event.notification.data?.url || '/';
-          return clients.openWindow(url);
+          return clients.openWindow(targetUrl);
         }
       })
   );
+});
+
+// 🔇 (Opsiyonel) Bildirim kapatıldığında loglayabilirsin
+self.addEventListener('notificationclose', (event) => {
+  console.log('[SW] Bildirim kapatıldı:', event.notification.tag);
 });

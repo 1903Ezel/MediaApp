@@ -2,17 +2,24 @@
 <html lang="tr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- 🔹 Sayfa Bilgileri -->
+    <title>MediaApp - Multimedya Platformu</title>
     <meta name="description" content="Modern, responsive ve PWA destekli multimedya paylaşım uygulaması.">
     <meta name="theme-color" content="#8b5cf6">
+
+    <!-- 🔹 Favicon ve Uygulama İkonları -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <title>MediaApp - Multimedya Platformu</title>
+
+    <!-- 🔹 PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
 
     <!-- ✅ OneSignal Web SDK (v16 modern sürüm) -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 
-    <!-- ✅ OneSignal başlatma ve izin kontrolü -->
+    <!-- ✅ OneSignal Başlatma ve İzin Kontrolü -->
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
 
@@ -21,22 +28,24 @@
           await OneSignal.init({
             appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // 🔹 Gerçek OneSignal App ID
             safari_web_id: "", // Safari kullanılmıyorsa boş bırak
-            notifyButton: { enable: false }, // Vue içinden yöneteceğiz
-            allowLocalhostAsSecureOrigin: true, // Lokal geliştirme için gerekli
+            notifyButton: { enable: false }, // Vue tarafında yöneteceğiz
+            allowLocalhostAsSecureOrigin: true, // Lokal testler için
+            serviceWorkerParam: { scope: "/" }, // Servis Worker kapsamı
+            serviceWorkerPath: "/sw.js", // 🔹 SW konumu
           });
 
           console.log("✅ OneSignal SDK başarıyla başlatıldı");
 
-          // 🎯 İzin durumu kontrolü
+          // 🔔 Bildirim izin durumunu kontrol et
           const permission = await OneSignal.Notifications.permission;
-
-          if (permission === 'granted') {
+          if (permission === "granted") {
             console.log("🔔 Bildirim izni zaten verilmiş.");
-          } else if (permission === 'default') {
-            console.log("🟣 Bildirim izni henüz verilmemiş, Vue tarafında isteyeceğiz.");
-          } else if (permission === 'denied') {
+          } else if (permission === "default") {
+            console.log("🟣 Bildirim izni henüz verilmemiş. Vue tarafında isteyeceğiz.");
+          } else if (permission === "denied") {
             console.warn("🚫 Kullanıcı bildirimleri reddetmiş.");
           }
+
         } catch (err) {
           console.error("❌ OneSignal başlatılırken hata:", err);
         }
@@ -47,7 +56,7 @@
   <body>
     <div id="app"></div>
 
-    <!-- Vue ana uygulaması -->
+    <!-- Vue Ana Uygulaması -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
