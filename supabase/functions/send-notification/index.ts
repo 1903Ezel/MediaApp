@@ -17,40 +17,54 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 );
 
-// 🔸 push_subscriptions tablosundan aktif kullanıcıları çeker
-async function getActiveUserIds(senderId: string): Promise<string[]> {
+// 🔸 push_subscriptions tablosundan aktif kullanıcıların endpointlerini çeker
+async function getActiveEndpoints(senderId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from("push_subscriptions")
-    .select("user_id")
+    .select("subscription, user_id")
     .eq("is_active", true)
     .neq("user_id", senderId); // Gönderen hariç
 
   if (error) {
-    console.error("❌ Kullanıcı ID'leri alınamadı:", error.message);
+    console.error("❌ push_subscriptions tablosu okunamadı:", error.message);
     return [];
   }
 
-  const ids = data.map((row) => row.user_id);
-  console.log(`🔍 ${ids.length} aktif kullanıcı bulundu.`);
-  return ids;
+  // JSON içinden endpoint'i çıkart
+  const endpoints = data
+    .map((row) => {
+      try {
+        const sub = JSON.parse(row.subscription);
+        return sub.endpoint as string;
+      } catch {
+        return null;
+      }
+    })
+    .filter((e): e is string => !!e);
+
+  console.log(`🔍 ${endpoints.length} aktif endpoint bulundu.`);
+  return endpoints;
 }
 
-// 🔸 OneSignal API'sine bildirim gönderen fonksiyon
-async function sendNotification(data: { contents: any; include_external_user_ids: string[] }) {
-  if (data.include_external_user_ids.length === 0) {
-    console.log("⚠️ Bildirim gönderilecek kullanıcı yok.");
+// 🔸 OneSignal API'sine bildirim gönderir
+async function sendNotification(endpoints: string[], message: string, senderUsername: string) {
+  if (endpoints.length === 0) {
+    console.log("⚠️ Bildirim gönderilecek abone yok.");
     return { status: 200, message: "No recipients found, skipped." };
   }
 
   const payload = {
     app_id: ONESIGNAL_APP_ID,
-    ...data,
+    include_external_user_ids: endpoints, // 🔹 burada endpoint'leri kullanıyoruz
     channel_for_external_user_ids: "push",
     headings: { en: "Yeni Genel Sohbet Mesajı" },
+    contents: {
+      en: `${senderUsername} yeni bir genel mesaj gönderdi: "${message.substring(0, 50)}..."`,
+    },
   };
 
   try {
-    const response = await fetch("https://onesignal.com/api/v1/notifications", {
+    const res = await fetch("https://onesignal.com/api/v1/notifications", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -59,13 +73,13 @@ async function sendNotification(data: { contents: any; include_external_user_ids
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ OneSignal API hatası: ${response.status} - ${errorText}`);
-      return { status: 500, message: errorText.substring(0, 120) };
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error(`❌ OneSignal API hatası: ${res.status} - ${txt}`);
+      return { status: 500, message: txt.substring(0, 200) };
     }
 
-    const result = await response.json();
+    const result = await res.json();
     console.log("✅ Bildirim başarıyla gönderildi:", result.id);
     return { status: 200, message: "Notification sent successfully" };
   } catch (e) {
@@ -89,28 +103,14 @@ serve(async (req) => {
     const senderId = record.sender_id;
     const recipientId = record.recipient_id;
     const messageContent = record.content;
+    const senderUsername = record.sender?.username || "Anonim Kullanıcı";
 
-    // 🎯 Eğer recipient_id null ise → genel sohbet bildirimi
+    // 🎯 Genel sohbet bildirimi
     if (recipientId === null) {
       console.log("🟣 Genel sohbet bildirimi başlatıldı...");
 
-      const recipients = await getActiveUserIds(senderId);
-      if (recipients.length === 0) {
-        return new Response(
-          JSON.stringify({ message: "No active users found." }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      const senderUsername = record.sender?.username || "Anonim Kullanıcı";
-      const contents = {
-        en: `${senderUsername} yeni bir genel mesaj gönderdi: "${messageContent.substring(0, 50)}..."`,
-      };
-
-      const result = await sendNotification({
-        contents,
-        include_external_user_ids: recipients,
-      });
+      const endpoints = await getActiveEndpoints(senderId);
+      const result = await sendNotification(endpoints, messageContent, senderUsername);
 
       return new Response(JSON.stringify(result), {
         status: result.status,
@@ -118,7 +118,7 @@ serve(async (req) => {
       });
     }
 
-    // 🎯 P2P mesajlaşma (ileride aktif edilebilir)
+    // 🎯 P2P mesajlaşma (şimdilik pasif)
     console.log(`🟡 Birebir mesaj tespit edildi, recipient_id: ${recipientId}`);
     return new Response(
       JSON.stringify({ message: "P2P logic skipped (genel chat only)" }),
