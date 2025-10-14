@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, watch, defineProps } from 'vue'
-import { supabase } from '../supabase.js'
+import { supabase } from './supabaseClient.js'
 import { session } from '../store.js'
 import { Paperclip } from 'lucide-vue-next';
 
