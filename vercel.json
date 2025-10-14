@@ -3,17 +3,34 @@
   "builds": [
     {
       "src": "vite.config.js",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+      "use": "@vercel/static-build"
     }
   ],
   "routes": [
-    { "src": "/manifest.webmanifest", "dest": "/dist/manifest.webmanifest" },
-    { "src": "/OneSignalSDKWorker.js", "dest": "/dist/OneSignalSDKWorker.js" },
-    { "src": "/OneSignalSDKUpdaterWorker.js", "dest": "/dist/OneSignalSDKUpdaterWorker.js" },
-    { "src": "/sw.js", "dest": "/dist/sw.js" },
-    { "src": "/(.*)", "dest": "/dist/$1" }
-  ]
+    {
+      "src": "/manifest.webmanifest",
+      "dest": "/manifest.webmanifest"
+    },
+    {
+      "src": "/sw.js",
+      "dest": "/sw.js"
+    },
+    {
+      "src": "/OneSignalSDKWorker.js",
+      "dest": "/OneSignalSDKWorker.js"
+    },
+    {
+      "src": "/OneSignalSDKUpdaterWorker.js",
+      "dest": "/OneSignalSDKUpdaterWorker.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
