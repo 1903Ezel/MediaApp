@@ -39,7 +39,7 @@ async function enableNotifications() {
 
     // SDK'ya kullanıcıyı tanıt ve izni iste
     window.OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.setExternalUserId(user.id)
+      await OneSignal.User.PushSubscription.setExternalId(userId);
       console.log("✅ OneSignal eşleştirildi:", user.id)
 
       // Slidedown prompt göster

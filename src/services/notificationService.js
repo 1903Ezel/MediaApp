@@ -39,7 +39,7 @@ class NotificationService {
       console.log("✅ Bildirim izni verildi!");
 
       // Kullanıcıyı OneSignal'a kaydet
-      await OneSignal.setExternalUserId(userId);
+      await OneSignal.User.PushSubscription.setExternalId(userId);
       const deviceId = await OneSignal.User.PushSubscription.id;
 
       if (!deviceId) {

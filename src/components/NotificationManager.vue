@@ -23,7 +23,7 @@ async function requestPermission() {
   // OneSignal bildirim izni talebi
   window.OneSignalDeferred.push(async function (OneSignal) {
     try {
-      await OneSignal.setExternalUserId(user.id)
+      await OneSignal.User.PushSubscription.setExternalId(userId);
       console.log('✅ OneSignal kullanıcı eşleştirildi:', user.id)
 
       await OneSignal.showSlidedownPrompt()
