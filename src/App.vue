@@ -6,7 +6,7 @@ import Posts from './components/Posts.vue'
 import Chat from './components/Chat.vue'
 import MenuButton from './components/MenuButton.vue'
 import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, BellRing, ArrowLeft } from 'lucide-vue-next'
-import { supabase } from './supabase.js'
+import { supabase } from './supabaseClient.js'
 
 const activeView = ref('menu')
 const currentFilter = ref(null)
