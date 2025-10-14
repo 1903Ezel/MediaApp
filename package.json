@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp public/*.js dist/ && cp public/*.webmanifest dist/",
+    "build": "vite build && mkdir -p dist && cp public/OneSignalSDKWorker.js dist/ && cp public/OneSignalSDKUpdaterWorker.js dist/ && cp public/manifest.webmanifest dist/ && cp public/sw.js dist/",
     "preview": "vite preview"
   },
   "dependencies": {
