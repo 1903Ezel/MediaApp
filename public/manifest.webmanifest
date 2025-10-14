@@ -3,6 +3,7 @@
   "short_name": "MediaApp",
   "description": "Modern, responsive ve PWA destekli multimedya paylaşım uygulaması.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#111827",
   "theme_color": "#8b5cf6",
@@ -26,5 +27,5 @@
       "purpose": "maskable"
     }
   ],
-  "gcm_sender_id": "482941778795" 
+  "gcm_sender_id": "482941778795"
 }
