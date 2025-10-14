@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import { supabase } from './supabase.js'
+import { supabase } from './supabaseClient.js'
+
 
 export const session = ref(null)
 
