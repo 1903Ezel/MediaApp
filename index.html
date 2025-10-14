@@ -8,33 +8,38 @@
     <meta name="description" content="Modern, responsive ve PWA destekli multimedya paylaşım uygulaması.">
     <meta name="theme-color" content="#8b5cf6">
 
+    <!-- Favicon / icons (varsa projene uygun dosyalar ekle) -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <!-- PWA manifest (varsa) -->
     <link rel="manifest" href="/manifest.json">
 
-    <!-- ✅ OneSignal Web SDK (v16 modern sürüm) -->
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <!-- OneSignal SDK (v16) -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" async></script>
 
-    <!-- ✅ OneSignal Başlatma -->
+    <!-- OneSignal init (serviceWorkerPath kesinlikle OneSignal worker dosyanla eşleşmeli) -->
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function (OneSignal) {
+
+      window.OneSignalDeferred.push(async function (OneSignal) {
         try {
           await OneSignal.init({
-            appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4",
-            safari_web_id: "",
-            notifyButton: { enable: false }, // Vue tarafında kontrol
-            serviceWorkerPath: "/sw.js",
+            appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // SENİN APP ID
+            safari_web_id: "", // Safari için gerekli ise ekle, yoksa boş bırak
+            notifyButton: { enable: false }, // Vue tarafından kontrol edilecekse false
+            // Bu path public/OneSignalSDKWorker.js dosyan ile *aynı* olmalı:
+            serviceWorkerPath: "/OneSignalSDKWorker.js",
             serviceWorkerParam: { scope: "/" },
-            allowLocalhostAsSecureOrigin: true
+            allowLocalhostAsSecureOrigin: true // localhost geliştirirken yardımcı
           });
 
-          console.log("✅ OneSignal SDK yüklendi");
-
-          const permission = await OneSignal.Notifications.permission;
-          console.log("🔔 Bildirim izni durumu:", permission);
+          console.log("✅ OneSignal SDK başarıyla init edildi (index.html).");
+          // debug: izin durumunu logla
+          const perm = await OneSignal.Notifications.permission;
+          console.log("🔔 OneSignal permission:", perm);
         } catch (err) {
-          console.error("❌ OneSignal init hatası:", err);
+          console.error("❌ OneSignal init hatası (index.html):", err);
         }
       });
     </script>
@@ -43,7 +48,7 @@
   <body>
     <div id="app"></div>
 
-    <!-- Vue Ana Uygulaması -->
+    <!-- Vue ana giriş -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
