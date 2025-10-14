@@ -1,21 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
-import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: [
-        'favicon.ico',
-        'robots.txt',
-        'apple-touch-icon.png',
-        'OneSignalSDKWorker.js',
-        'OneSignalSDKUpdaterWorker.js',
-        'manifest.webmanifest'
-      ],
       manifest: {
         name: 'MediaApp - Multimedya Paylaşım Platformu',
         short_name: 'MediaApp',
@@ -46,12 +37,12 @@ export default defineConfig({
       }
     })
   ],
+
+  // 💡 BU KISIM HATAYI ÇÖZÜYOR:
   build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-      },
-    },
+    outDir: 'dist',
+    assetsDir: 'assets'
   },
-  publicDir: 'public', // emin olmak için ekliyoruz
+
+  publicDir: 'public'
 })
