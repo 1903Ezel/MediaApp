@@ -3,11 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build && mkdir -p dist && cp public/OneSignalSDKWorker.js dist/ && cp public/OneSignalSDKUpdaterWorker.js dist/ && cp public/manifest.webmanifest dist/ && cp public/sw.js dist/",
-    "preview": "vite preview"
-  },
+"scripts": {
+  "dev": "vite",
+  "build": "vite build && mkdir -p dist && cp public/OneSignalSDKWorker.js public/OneSignalSDKUpdaterWorker.js public/manifest.webmanifest public/sw.js dist/ || true",
+  "preview": "vite preview"
+}
   "dependencies": {
     "@supabase/supabase-js": "^2.43.4",
     "lucide-vue-next": "^0.395.0",
