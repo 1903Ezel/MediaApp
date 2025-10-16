@@ -2,23 +2,25 @@
   "version": 2,
   "public": true,
   "builds": [
-    { "src": "vite.config.js", "use": "@vercel/static-build" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/" }
+    { "src": "package.json", "use": "@vercel/static-build" }
   ],
   "outputDirectory": "dist",
   "framework": "vite",
   "cleanUrls": true,
   "trailingSlash": false,
-  "cache": {
-    "headers": [
-      {
-        "source": "/sw.js",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
-        ]
-      }
-    ]
-  }
+  "headers": [
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Content-Type", "value": "application/manifest+json" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+      ]
+    }
+  ]
 }

@@ -1,53 +1,71 @@
 import { createApp } from "vue";
 import "./style.css";
 import App from "./App.vue";
-
-// 👇 Supabase Client (kendi yoluna göre)
 import { supabase } from "./supabaseClient";
+import { session } from "./store.js";
 
-// 👇 Vue uygulaması
 const app = createApp(App);
 
 /**
- * OneSignal entegrasyonu (v16)
- * - SDK zaten index.html içinde yüklü
- * - Burada sadece kullanıcıyı login ederiz
+ * 🔔 OneSignal Entegrasyonu (v16 için optimize)
+ *  - Kullanıcı login/logout durumuna göre OneSignal senkronize olur.
+ *  - Gereksiz 409 Conflict hataları engellenmiştir.
  */
-async function setupOneSignalUser() {
-  try {
-    // 1️⃣ OneSignal SDK hazır mı kontrol et
-    if (!window.OneSignalDeferred) {
-      console.error("❌ OneSignal SDK henüz yüklenmedi!");
-      return;
-    }
-
-    // 2️⃣ Supabase oturum kontrolü
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // 3️⃣ Kullanıcı varsa OneSignal'e login et
-    if (user) {
-      const userId = user.id;
-
-      window.OneSignalDeferred.push(async function (OneSignal) {
-        try {
-          await OneSignal.login(userId);
-          console.log("✅ OneSignal user login oldu:", userId);
-        } catch (e) {
-          console.error("❌ OneSignal login hatası:", e);
-        }
-      });
-    } else {
-      console.log("ℹ️ Giriş yapılmamış, OneSignal login atlandı.");
-    }
-  } catch (err) {
-    console.error("❌ OneSignal başlatma hatası:", err);
+async function setupOneSignal(userId = null) {
+  // SDK yüklenmemişse bekle
+  if (!window.OneSignalDeferred) {
+    console.warn("⚠️ OneSignal SDK henüz yüklenmedi, bekleniyor...");
+    return;
   }
+
+  window.OneSignalDeferred.push(async function (OneSignal) {
+    try {
+      // ⏳ SDK tamamen hazır olana kadar küçük bekleme
+      await new Promise((r) => setTimeout(r, 1000));
+
+      // Mevcut externalId (OneSignal user id)
+      const currentExternalId = await OneSignal.User.getExternalId?.();
+
+      // 🔹 Kullanıcı giriş yaptıysa
+      if (userId && currentExternalId !== userId) {
+        await OneSignal.login(userId);
+        console.log("✅ OneSignal login:", userId);
+      }
+      // 🔹 Kullanıcı çıkış yaptıysa
+      else if (!userId && currentExternalId) {
+        await OneSignal.logout();
+        console.log("👋 OneSignal logout yapıldı.");
+      }
+      // 🔹 Zaten güncel
+      else {
+        console.log("ℹ️ OneSignal zaten senkron durumda:", currentExternalId);
+      }
+    } catch (err) {
+      console.error("❌ OneSignal işlem hatası:", err);
+    }
+  });
 }
 
-// OneSignal setup başlat
-setupOneSignalUser();
+/**
+ * 🧩 Supabase oturum değişimlerini dinle
+ */
+supabase.auth.onAuthStateChange((event, currentSession) => {
+  session.value = currentSession;
+  const userId = currentSession?.user?.id || null;
+  setupOneSignal(userId);
+});
 
-// Vue mount
+/**
+ * 🚀 Başlangıçta mevcut kullanıcıyı kontrol et
+ */
+(async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  setupOneSignal(user?.id || null);
+})();
+
+/**
+ * 🪄 Vue uygulamasını başlat
+ */
 app.mount("#app");

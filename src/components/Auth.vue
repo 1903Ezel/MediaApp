@@ -13,26 +13,22 @@ const handleAuth = async () => {
     let error = null
 
     if (isRegistering.value) {
-      // 🚨 KAYIT OL (Sign Up) - FlowType Düzeltmesi Buradadır
-      ({ error } = await supabase.auth.signUp({
-        email: email.value,
-        password: password.value,
-        // PKCE flowType'ı eklenerek hatalı akış (flowType) hatası çözülür
-        options: {
-          flowType: 'pkce' 
-        }
-      }))
-      if (!error) alert('Hesap başarıyla oluşturuldu! Lütfen giriş yapın.')
-    } else {
-      // GİRİŞ YAP (Sign In)
-      ({ error } = await supabase.auth.signInWithPassword({
+      // ✅ KAYIT OL - flowType kaldırıldı
+      const { error: signUpError } = await supabase.auth.signUp({
         email: email.value,
         password: password.value
-      }))
-      if (!error) alert('Giriş başarılı! Yönlendiriliyorsunuz...')
+      })
+      if (signUpError) throw signUpError
+      alert('Hesap başarıyla oluşturuldu! Şimdi giriş yapabilirsiniz.')
+    } else {
+      // ✅ GİRİŞ YAP
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.value,
+        password: password.value
+      })
+      if (signInError) throw signInError
+      alert('Giriş başarılı! Oturum açılıyor...')
     }
-
-    if (error) throw error
 
   } catch (error) {
     alert(error.error_description || error.message)
@@ -43,7 +39,9 @@ const handleAuth = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center gap-4 p-8 bg-black/30 rounded-2xl w-full max-w-sm shadow-2xl">
+  <div
+    class="flex flex-col items-center justify-center gap-4 p-8 bg-black/30 rounded-2xl w-full max-w-sm shadow-2xl"
+  >
     <h1 class="text-3xl font-extrabold text-white">
       {{ isRegistering ? 'Kayıt Ol' : 'MediaApp Giriş' }}
     </h1>
