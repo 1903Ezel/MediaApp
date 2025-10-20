@@ -28,50 +28,41 @@ async function fetchMessages() {
   }
 }
 
-// --- Mesaj Gönder ve Bildirimi Tetikle (GÜNCELLENDİ) ---
+// --- Mesaj Gönder --- (NİHAİ VE GÜVENLİ VERSİYON)
 async function addMessage() {
-  if (!session.value || !session.value.user) {
-    alert("Oturum bulunamadı. Lütfen giriş yapın.");
+  // 1. Kullanıcı oturumunun ve kimliğinin var olduğunu KESİN olarak kontrol et
+  if (!session.value?.user?.id) {
+    console.error("Kullanıcı oturumu veya ID'si bulunamadı. Mesaj gönderilemiyor.");
+    alert("Giriş bilgileriniz bulunamadı. Lütfen sayfayı yenileyin veya tekrar giriş yapın.");
     return;
   }
 
   const content = newMessage.value.trim();
   if (content === "") return;
-  
-  // Mesajı gönderirken input'u hemen temizle
-  newMessage.value = "";
+
+  const userId = session.value.user.id; // Kullanıcı ID'sini bir değişkene al
+  newMessage.value = ""; // Input'u hemen temizle
 
   try {
-    // Adım 1: Mesajı ekle ve eklenen satırın ID'sini geri al
-    const { data: newInsertedMessage, error: insertError } = await supabase
-      .from("chat_messages")
-      .insert({
-        content: content,
-        sender_id: session.value.user.id,
-      })
-      .select("id") // Bu çok önemli! Eklenen satırın ID'sini geri döndürür.
-      .single();
+    // 2. Mesajı, doğrulanmış kullanıcı ID'si ile ekle.
+    // Başarılı bir ekleme, veritabanındaki tetikleyiciyi (trigger) otomatik olarak çalıştıracaktır.
+    const { error } = await supabase.from("chat_messages").insert({
+      content: content,
+      sender_id: userId, // Güvenli bir şekilde kullanıcı ID'sini ekle
+    });
 
-    if (insertError) throw insertError;
-
-    console.log("Mesaj başarıyla eklendi, ID:", newInsertedMessage.id);
-
-    // Adım 2: Ekleme başarılıysa, dönen mesajın ID'si ile RPC fonksiyonunu çağır
-    const { data: rpcData, error: rpcError } = await supabase.rpc(
-      "send_notification",
-      {
-        message_id: newInsertedMessage.id,
-      }
-    );
-
-    if (rpcError) {
-      console.error("Bildirim gönderme fonksiyonu hatası:", rpcError);
-    } else {
-      // Bu logu görüyorsanız, bildirim başarıyla gönderilmiştir!
-      console.log("✅ Bildirim fonksiyonu sunucudan cevap verdi:", rpcData);
+    if (error) {
+      // Eğer burada bir hata olursa, bu %99 ihtimalle RLS hatasıdır.
+      throw error;
     }
+
+    console.log("Mesaj başarıyla veritabanına eklendi. Bildirim tetikleyicisi çalıştırıldı.");
+
   } catch (error) {
-    console.error("Mesaj gönderme/bildirim sürecinde hata:", error.message);
+    console.error("Mesaj gönderme sürecinde hata:", error.message);
+    // Hata durumunda kullanıcıya bilgi ver ve yazdığı mesajı geri yükle
+    alert("Mesaj gönderilirken bir hata oluştu: " + error.message);
+    newMessage.value = content;
   }
 }
 
