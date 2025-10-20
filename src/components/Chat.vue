@@ -1,4 +1,3 @@
-vue
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
@@ -20,9 +19,18 @@ async function getSession() {
 async function fetchMessages() {
   try {
     loading.value = true;
+    
+    // Grup sohbet mesajları (recipient_id null olanlar)
     const { data, error } = await supabase
       .from("chat_messages")
-      .select("id, content, created_at, sender:profiles(username, id)")
+      .select(`
+        id, 
+        content, 
+        created_at, 
+        sender_id,
+        sender:profiles!chat_messages_sender_id_fkey(id, username)
+      `)
+      .is('recipient_id', null)  // Sadece grup mesajları
       .order("created_at", { ascending: true });
 
     if (error) throw error;
@@ -91,10 +99,12 @@ async function addMessage() {
     // Profil kontrolü ve oluşturma
     await ensureUserProfile(user.id, user.email);
 
-    // Mesaj gönder
+    // Grup mesajı gönder (recipient_id = null)
     const { error } = await supabase.from("chat_messages").insert({
       content: content,
       sender_id: user.id,
+      recipient_id: null,  // Grup mesajı için null
+      status: 'sent'       // Status ekle
     });
 
     if (error) {
@@ -132,12 +142,17 @@ onMounted(async () => {
 
   // Realtime abonelik
   const subscription = supabase
-    .channel("chat_room")
+    .channel("group_chat")
     .on(
       "postgres_changes",
-      { event: "INSERT", schema: "public", table: "chat_messages" },
+      { 
+        event: "INSERT", 
+        schema: "public", 
+        table: "chat_messages",
+        filter: "recipient_id=is.null"  // Sadece grup mesajlarını dinle
+      },
       (payload) => {
-        console.log("Yeni mesaj alındı:", payload);
+        console.log("Yeni grup mesajı alındı:", payload);
         fetchMessages();
       }
     )
@@ -181,16 +196,16 @@ watch(messages, scrollToBottom, { deep: true });
         :key="message.id"
         class="flex"
         :class="{
-          'justify-end': session?.user?.id === message.sender?.id,
+          'justify-end': session?.user?.id === message.sender_id,
         }"
       >
         <div
           class="max-w-[80%] p-3 rounded-xl shadow-md transition-all duration-200"
           :class="{
             'bg-purple-600 text-white rounded-br-none':
-              session?.user?.id === message.sender?.id,
+              session?.user?.id === message.sender_id,
             'bg-gray-700 text-white rounded-bl-none':
-              session?.user?.id !== message.sender?.id,
+              session?.user?.id !== message.sender_id,
           }"
         >
           <div class="text-xs font-semibold mb-1 text-purple-200">
@@ -240,4 +255,3 @@ watch(messages, scrollToBottom, { deep: true });
   background: rgba(168, 85, 247, 0.7);
 }
 </style>
-
