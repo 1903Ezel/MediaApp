@@ -6,8 +6,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   // BU SATIR ÇOK ÖNEMLİ: Sitenin doğru yolda yayınlanmasını sağlar.
   // GitHub deponuzun adıyla aynı olmalı.
-  base: '/mediaapp/', 
-  
+  base: '/MediaApp/', 
+
   plugins: [
     vue(),
     VitePWA({ registerType: 'autoUpdate' })
