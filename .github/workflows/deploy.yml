@@ -1,0 +1,50 @@
+# Sitenizi GitHub Pages'e dağıtmak için basit bir iş akışı
+name: Deploy Vue site to Pages
+
+on:
+  # "main" dalına yapılan her "push" işleminde otomatik olarak çalışır
+  push:
+    branches: [main] # Eğer ana dalınızın adı "master" ise, burayı "master" olarak değiştirin
+  # Bu iş akışını GitHub Actions sekmesinden manuel olarak da çalıştırmanıza olanak tanır
+  workflow_dispatch:
+
+# Dağıtım işinin izinlerini ayarla
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Aynı anda sadece bir dağıtıma izin ver
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu Kopyala
+        uses: actions/checkout@v4
+      - name: Node.js Kurulumu
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20 # Kullandığınız Node.js sürümü
+          cache: npm
+      - name: Bağımlılıkları Yükle
+        run: npm install
+      - name: Siteyi Derle (Build)
+        run: npm run build
+        env: # Bu bölüm, Supabase anahtarlarınızı derleme sırasında kullanır
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - name: GitHub Pages için Artifact'i Yükle
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Derleme sonucunda ortaya çıkan klasörü yükle
+          path: './dist'
+      - name: GitHub Pages'e Dağıt
+        id: deployment
+        uses: actions/deploy-pages@v4
