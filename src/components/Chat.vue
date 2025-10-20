@@ -28,25 +28,50 @@ async function fetchMessages() {
   }
 }
 
-// --- Mesaj Gönder ---
+// --- Mesaj Gönder ve Bildirimi Tetikle (GÜNCELLENDİ) ---
 async function addMessage() {
   if (!session.value || !session.value.user) {
     alert("Oturum bulunamadı. Lütfen giriş yapın.");
     return;
   }
 
-  if (newMessage.value.trim() === "") return;
+  const content = newMessage.value.trim();
+  if (content === "") return;
+  
+  // Mesajı gönderirken input'u hemen temizle
+  newMessage.value = "";
 
   try {
-    const { error } = await supabase.from("chat_messages").insert({
-      content: newMessage.value,
-      sender_id: session.value.user.id
-    });
+    // Adım 1: Mesajı ekle ve eklenen satırın ID'sini geri al
+    const { data: newInsertedMessage, error: insertError } = await supabase
+      .from("chat_messages")
+      .insert({
+        content: content,
+        sender_id: session.value.user.id,
+      })
+      .select("id") // Bu çok önemli! Eklenen satırın ID'sini geri döndürür.
+      .single();
 
-    if (error) throw error;
-    newMessage.value = "";
+    if (insertError) throw insertError;
+
+    console.log("Mesaj başarıyla eklendi, ID:", newInsertedMessage.id);
+
+    // Adım 2: Ekleme başarılıysa, dönen mesajın ID'si ile RPC fonksiyonunu çağır
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "send_notification",
+      {
+        message_id: newInsertedMessage.id,
+      }
+    );
+
+    if (rpcError) {
+      console.error("Bildirim gönderme fonksiyonu hatası:", rpcError);
+    } else {
+      // Bu logu görüyorsanız, bildirim başarıyla gönderilmiştir!
+      console.log("✅ Bildirim fonksiyonu sunucudan cevap verdi:", rpcData);
+    }
   } catch (error) {
-    console.error("Mesaj gönderilirken hata:", error.message);
+    console.error("Mesaj gönderme/bildirim sürecinde hata:", error.message);
   }
 }
 
@@ -84,7 +109,6 @@ watch(messages, scrollToBottom, { deep: true });
       Grup Sohbet Odası 💬
     </h2>
 
-    <!-- Mesaj Listesi -->
     <div
       ref="chatContainer"
       class="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar"
@@ -104,16 +128,16 @@ watch(messages, scrollToBottom, { deep: true });
         :key="message.id"
         class="flex"
         :class="{
-          'justify-end': session?.value?.user?.id === message.sender.id
+          'justify-end': session?.user?.id === message.sender.id,
         }"
       >
         <div
           class="max-w-[80%] p-3 rounded-xl shadow-md transition-all duration-200"
           :class="{
             'bg-purple-600 text-white rounded-br-none':
-              session?.value?.user?.id === message.sender.id,
+              session?.user?.id === message.sender.id,
             'bg-gray-700 text-white rounded-bl-none':
-              session?.value?.user?.id !== message.sender.id
+              session?.user?.id !== message.sender.id,
           }"
         >
           <div class="text-xs font-semibold mb-1 text-purple-200">
@@ -124,7 +148,7 @@ watch(messages, scrollToBottom, { deep: true });
             {{
               new Date(message.created_at).toLocaleTimeString("tr-TR", {
                 hour: "2-digit",
-                minute: "2-digit"
+                minute: "2-digit",
               })
             }}
           </div>
@@ -132,7 +156,6 @@ watch(messages, scrollToBottom, { deep: true });
       </div>
     </div>
 
-    <!-- Mesaj Gönderme Alanı -->
     <form @submit.prevent="addMessage" class="mt-4 flex gap-3">
       <input
         v-model="newMessage"
