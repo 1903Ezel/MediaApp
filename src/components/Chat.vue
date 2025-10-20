@@ -1,4 +1,4 @@
-```vue
+vue
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
@@ -240,4 +240,4 @@ watch(messages, scrollToBottom, { deep: true });
   background: rgba(168, 85, 247, 0.7);
 }
 </style>
-```
+
