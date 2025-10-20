@@ -4,9 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // BU SATIR ÇOK ÖNEMLİ: Sitenin doğru yolda yayınlanmasını sağlar.
-  // GitHub deponuzun adıyla aynı olmalı.
-  base: '/MediaApp/', 
+  // 🚨 VERCEL UYUMU İÇİN KRİTİK DÜZELTME:
+  // Vercel her zaman kök dizini (/) kullanır.
+  // GitHub Pages için olan '/MediaApp/' ayarını siliyoruz.
+  base: '/', 
 
   plugins: [
     vue(),
