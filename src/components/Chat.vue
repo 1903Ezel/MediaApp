@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js";
-import { session } from "../store.js";
 import { Send } from "lucide-vue-next";
 
 const loading = ref(true);
@@ -28,24 +27,26 @@ async function fetchMessages() {
   }
 }
 
-// --- Mesaj Gönder --- (NİHAİ VE GÜVENLİ VERSİYON)
+// --- Mesaj Gönder --- (RLS HATASINI ÇÖZMEK İÇİN GÜNCELLENDİ)
 async function addMessage() {
-  // 1. Kullanıcı oturumunun ve kimliğinin var olduğunu KESİN olarak kontrol et
-  if (!session.value?.user?.id) {
-    console.error("Kullanıcı oturumu veya ID'si bulunamadı. Mesaj gönderilemiyor.");
-    alert("Giriş bilgileriniz bulunamadı. Lütfen sayfayı yenileyin veya tekrar giriş yapın.");
-    return;
-  }
-
   const content = newMessage.value.trim();
   if (content === "") return;
 
-  const userId = session.value.user.id; // Kullanıcı ID'sini bir değişkene al
-  newMessage.value = ""; // Input'u hemen temizle
-
   try {
+    // 1. GÜVENLİ YÖNTEM: Mesajı göndermeden hemen önce güncel kullanıcıyı al.
+    // Bu, session state'inin eski veya hatalı olma ihtimalini ortadan kaldırır.
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      console.error("Kullanıcı oturumu bulunamadı. Mesaj gönderilemiyor.");
+      alert("Giriş bilgileriniz bulunamadı. Lütfen sayfayı yenileyin veya tekrar giriş yapın.");
+      return;
+    }
+
+    const userId = user.id; // En güncel ve doğru kullanıcı ID'sini kullan
+    newMessage.value = ""; // Input'u hemen temizle
+
     // 2. Mesajı, doğrulanmış kullanıcı ID'si ile ekle.
-    // Başarılı bir ekleme, veritabanındaki tetikleyiciyi (trigger) otomatik olarak çalıştıracaktır.
     const { error } = await supabase.from("chat_messages").insert({
       content: content,
       sender_id: userId, // Güvenli bir şekilde kullanıcı ID'sini ekle
@@ -178,3 +179,4 @@ watch(messages, scrollToBottom, { deep: true });
   background: rgba(168, 85, 247, 0.7);
 }
 </style>
+
