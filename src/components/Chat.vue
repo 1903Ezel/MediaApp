@@ -1,12 +1,19 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
-import { supabase } from "../supabaseClient.js";
+import { supabase } from "../supabaseClient.js"; 
 import { Send } from "lucide-vue-next";
 
 const loading = ref(true);
 const messages = ref([]);
 const newMessage = ref("");
 const chatContainer = ref(null);
+const session = ref(null); 
+
+// --- Oturumu Al ---
+async function getSession() {
+  const { data: { session: currentSession } } = await supabase.auth.getSession();
+  session.value = currentSession;
+}
 
 // --- Mesajları Getir ---
 async function fetchMessages() {
@@ -27,43 +34,41 @@ async function fetchMessages() {
   }
 }
 
-// --- Mesaj Gönder --- (RLS HATASINI ÇÖZMEK İÇİN GÜNCELLENDİ)
+// --- Mesaj Gönder --- (Sadece basit INSERT kullanır)
 async function addMessage() {
   const content = newMessage.value.trim();
   if (content === "") return;
 
+  const tempMessage = newMessage.value; 
+  newMessage.value = ""; 
+
   try {
-    // 1. GÜVENLİ YÖNTEM: Mesajı göndermeden hemen önce güncel kullanıcıyı al.
-    // Bu, session state'inin eski veya hatalı olma ihtimalini ortadan kaldırır.
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      console.error("Kullanıcı oturumu bulunamadı. Mesaj gönderilemiyor.");
-      alert("Giriş bilgileriniz bulunamadı. Lütfen sayfayı yenileyin veya tekrar giriş yapın.");
+      console.error("Kullanıcı oturumu bulunamadı.");
+      alert("Giriş bilgileriniz bulunamadı.");
       return;
     }
 
-    const userId = user.id; // En güncel ve doğru kullanıcı ID'sini kullan
-    newMessage.value = ""; // Input'u hemen temizle
+    const userId = user.id;
 
-    // 2. Mesajı, doğrulanmış kullanıcı ID'si ile ekle.
+    // SADECE INSERT İŞLEMİ, EK BİR RPC/Fonksiyon çağrısı YOK.
     const { error } = await supabase.from("chat_messages").insert({
       content: content,
-      sender_id: userId, // Güvenli bir şekilde kullanıcı ID'sini ekle
+      sender_id: userId,
     });
 
     if (error) {
-      // Eğer burada bir hata olursa, bu %99 ihtimalle RLS hatasıdır.
+      newMessage.value = tempMessage; 
       throw error;
     }
 
-    console.log("Mesaj başarıyla veritabanına eklendi. Bildirim tetikleyicisi çalıştırıldı.");
+    console.log("Mesaj başarıyla veritabanına eklenmek üzere gönderildi.");
 
   } catch (error) {
     console.error("Mesaj gönderme sürecinde hata:", error.message);
-    // Hata durumunda kullanıcıya bilgi ver ve yazdığı mesajı geri yükle
     alert("Mesaj gönderilirken bir hata oluştu: " + error.message);
-    newMessage.value = content;
   }
 }
 
@@ -76,8 +81,13 @@ function scrollToBottom() {
   });
 }
 
-// --- Realtime Abonelik ---
+// --- Realtime ve Oturum Abonelikleri ---
 onMounted(() => {
+  getSession(); 
+  supabase.auth.onAuthStateChange((_, currentSession) => {
+    session.value = currentSession;
+  });
+
   fetchMessages();
 
   supabase
@@ -133,7 +143,7 @@ watch(messages, scrollToBottom, { deep: true });
           }"
         >
           <div class="text-xs font-semibold mb-1 text-purple-200">
-            {{ message.sender.username || "Bilinmeyen Kullanıcı" }}
+            {{ message.sender?.username || "Bilinmeyen Kullanıcı" }}
           </div>
           <p class="whitespace-pre-wrap">{{ message.content }}</p>
           <div class="text-[10px] text-right mt-1 text-purple-300">
@@ -179,4 +189,3 @@ watch(messages, scrollToBottom, { deep: true });
   background: rgba(168, 85, 247, 0.7);
 }
 </style>
-
