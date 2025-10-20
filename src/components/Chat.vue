@@ -1,3 +1,4 @@
+```vue
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
@@ -25,16 +26,51 @@ async function fetchMessages() {
       .order("created_at", { ascending: true });
 
     if (error) throw error;
-    messages.value = data;
+    messages.value = data || [];
   } catch (error) {
     console.error("Mesajlar çekilirken hata:", error);
+    messages.value = [];
   } finally {
     loading.value = false;
     scrollToBottom();
   }
 }
 
-// --- Mesaj Gönder --- (Sadece basit INSERT kullanır)
+// --- Profil Oluştur veya Al ---
+async function ensureUserProfile(userId, userEmail) {
+  try {
+    // Önce profil var mı kontrol et
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .eq('id', userId)
+      .single();
+
+    if (existingProfile) {
+      return existingProfile;
+    }
+
+    // Profil yoksa oluştur
+    const username = userEmail?.split('@')[0] || 'Kullanıcı';
+    const { data: newProfile, error } = await supabase
+      .from('profiles')
+      .insert({
+        id: userId,
+        username: username
+      })
+      .select('id, username')
+      .single();
+
+    if (error) throw error;
+    return newProfile;
+    
+  } catch (error) {
+    console.error('Profil işlemi hatası:', error);
+    return null;
+  }
+}
+
+// --- Mesaj Gönder ---
 async function addMessage() {
   const content = newMessage.value.trim();
   if (content === "") return;
@@ -48,15 +84,17 @@ async function addMessage() {
     if (!user) {
       console.error("Kullanıcı oturumu bulunamadı.");
       alert("Giriş bilgileriniz bulunamadı.");
+      newMessage.value = tempMessage;
       return;
     }
 
-    const userId = user.id;
+    // Profil kontrolü ve oluşturma
+    await ensureUserProfile(user.id, user.email);
 
-    // SADECE INSERT İŞLEMİ, EK BİR RPC/Fonksiyon çağrısı YOK.
+    // Mesaj gönder
     const { error } = await supabase.from("chat_messages").insert({
       content: content,
-      sender_id: userId,
+      sender_id: user.id,
     });
 
     if (error) {
@@ -64,11 +102,12 @@ async function addMessage() {
       throw error;
     }
 
-    console.log("Mesaj başarıyla veritabanına eklenmek üzere gönderildi.");
+    console.log("Mesaj başarıyla gönderildi.");
 
   } catch (error) {
-    console.error("Mesaj gönderme sürecinde hata:", error.message);
+    console.error("Mesaj gönderme hatası:", error.message);
     alert("Mesaj gönderilirken bir hata oluştu: " + error.message);
+    newMessage.value = tempMessage;
   }
 }
 
@@ -82,22 +121,34 @@ function scrollToBottom() {
 }
 
 // --- Realtime ve Oturum Abonelikleri ---
-onMounted(() => {
-  getSession(); 
+onMounted(async () => {
+  await getSession(); 
+  
   supabase.auth.onAuthStateChange((_, currentSession) => {
     session.value = currentSession;
   });
 
-  fetchMessages();
+  await fetchMessages();
 
-  supabase
+  // Realtime abonelik
+  const subscription = supabase
     .channel("chat_room")
     .on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "chat_messages" },
-      () => fetchMessages()
+      (payload) => {
+        console.log("Yeni mesaj alındı:", payload);
+        fetchMessages();
+      }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log("Realtime subscription status:", status);
+    });
+
+  // Cleanup function
+  return () => {
+    subscription.unsubscribe();
+  };
 });
 
 watch(messages, scrollToBottom, { deep: true });
@@ -130,16 +181,16 @@ watch(messages, scrollToBottom, { deep: true });
         :key="message.id"
         class="flex"
         :class="{
-          'justify-end': session?.user?.id === message.sender.id,
+          'justify-end': session?.user?.id === message.sender?.id,
         }"
       >
         <div
           class="max-w-[80%] p-3 rounded-xl shadow-md transition-all duration-200"
           :class="{
             'bg-purple-600 text-white rounded-br-none':
-              session?.user?.id === message.sender.id,
+              session?.user?.id === message.sender?.id,
             'bg-gray-700 text-white rounded-bl-none':
-              session?.user?.id !== message.sender.id,
+              session?.user?.id !== message.sender?.id,
           }"
         >
           <div class="text-xs font-semibold mb-1 text-purple-200">
@@ -189,3 +240,4 @@ watch(messages, scrollToBottom, { deep: true });
   background: rgba(168, 85, 247, 0.7);
 }
 </style>
+```
