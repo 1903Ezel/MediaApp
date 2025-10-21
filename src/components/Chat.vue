@@ -96,6 +96,33 @@ async function handleLogout() {
     await supabase.auth.signOut();
 }
 
+// YENİ: Otomatik push aboneliği fonksiyonu
+async function initializePushSubscription(user) {
+  if (!user) return;
+  
+  console.log('👤 Kullanıcı tespit edildi, push aboneliği başlatılıyor...');
+  
+  // OneSignal'in yüklenmesi için 3 saniye bekle
+  setTimeout(async () => {
+    try {
+      console.log('🔔 Push aboneliği deneniyor...');
+      const success = await notificationService.requestPermission(user.id);
+      console.log('🎯 Push aboneliği sonucu:', success);
+      
+      if (success) {
+        // Başarılı olduğunda abonelikleri göster
+        const { data: subs } = await supabase
+          .from('push_subscriptions')
+          .select('*')
+          .eq('user_id', user.id);
+        console.log('📋 Mevcut aboneliklerim:', subs);
+      }
+    } catch (error) {
+      console.error('💥 Push aboneliği hatası:', error);
+    }
+  }, 3000);
+}
+
 onMounted(async () => {
   // 1. İlk mesajları getir
   await fetchMessages();
@@ -126,18 +153,24 @@ onMounted(async () => {
         };
 
         messages.value.push(newMessage);
+        scrollToBottom();
       }
     )
     .subscribe();
 
-  // 3. Bildirim İznini İste ve Cihazı Kaydet (Sadece giriş yapılmışsa)
-  watch(session, async (newSession) => {
-    if (newSession?.user) {
-        await notificationService.requestPermission(newSession.user.id);
-    }
-  }, { immediate: true });
+  // 3. YENİ: Otomatik push aboneliği
+  if (session.value?.user) {
+    initializePushSubscription(session.value.user);
+  }
 
-  // 4. Yeni mesaj geldiğinde otomatik aşağı kaydır
+  // 4. Session değiştiğinde push aboneliğini başlat
+  watch(session, (newSession) => {
+    if (newSession?.user) {
+      initializePushSubscription(newSession.user);
+    }
+  });
+
+  // 5. Yeni mesaj geldiğinde otomatik aşağı kaydır
   watch(messages, scrollToBottom, { deep: true, flush: 'post' }); 
 
   return () => {
@@ -148,9 +181,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="bg-black/40 rounded-xl p-0 flex flex-col h-full shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
+  <div class="bg-black/40 rounded-xl flex flex-col h-full shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
     
-    <div class="p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30 sticky top-0 z-10">
+    <!-- SABIT ÜST BAR - WhatsApp gibi -->
+    <div class="p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30 shrink-0">
       <div class="flex items-center gap-3">
         <MessageSquare :size="24" class="text-purple-400" />
         <h2 class="text-xl font-bold text-white">Grup Sohbet Odası</h2>
@@ -161,7 +195,8 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-4 p-4 custom-scrollbar">
+    <!-- MESAJ ALANI - Scroll olacak kısım -->
+    <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
       <div v-if="loading" class="text-white/50 text-center py-8">
         Mesajlar yükleniyor...
       </div>
@@ -193,7 +228,8 @@ onMounted(async () => {
       </div>
     </div>
 
-    <form @submit.prevent="addMessage" class="p-4 flex gap-3 bg-gray-900/80 border-t border-purple-500/30 sticky bottom-0 z-10">
+    <!-- SABIT ALT BAR - Mesaj yazma alanı -->
+    <form @submit.prevent="addMessage" class="p-4 flex gap-3 bg-gray-900/80 border-t border-purple-500/30 shrink-0">
       <input
         v-model="newMessage"
         type="text"
@@ -213,7 +249,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* Scrollbar stilini koruyoruz */
+/* WhatsApp benzeri scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
@@ -223,5 +259,13 @@ onMounted(async () => {
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(168, 85, 247, 0.7);
+}
+
+/* Mobile uyumluluk */
+@media (max-width: 768px) {
+  .bg-black\/40 {
+    border-radius: 0;
+    border: none;
+  }
 }
 </style>
