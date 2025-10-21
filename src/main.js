@@ -1,3 +1,4 @@
+// src/main.js
 import { createApp } from "vue";
 import "./style.css";
 import App from "./App.vue";
@@ -7,47 +8,68 @@ import { session } from "./store.js";
 const app = createApp(App);
 
 /**
- * 🔔 OneSignal Entegrasyonu (v16 için optimize)
- *  - Kullanıcı login/logout durumuna göre OneSignal senkronize olur.
- *  - Gereksiz 409 Conflict hataları engellenmiştir.
+ * ✅ 1️⃣ PWA Service Worker Kaydı
+ * Bu, Vercel ortamında hem PWA hem OneSignal ile uyumlu olacak şekilde optimize edilmiştir.
+ */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((reg) => console.log("✅ Service Worker kayıt edildi:", reg.scope))
+      .catch((err) => console.error("❌ Service Worker hatası:", err));
+  });
+}
+
+/**
+ * ✅ 2️⃣ OneSignal Entegrasyonu (v16 uyumlu)
+ *  - Kullanıcı login/logout durumuna göre senkronize olur
+ *  - SDK yüklenene kadar bekleme eklenmiştir
  */
 async function setupOneSignal(userId = null) {
-  // SDK yüklenmemişse bekle
+  // SDK yüklenmesini bekle
+  for (let i = 0; i < 10; i++) {
+    if (window.OneSignalDeferred) break;
+    console.log("⏳ OneSignal SDK yükleniyor...");
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
   if (!window.OneSignalDeferred) {
-    console.warn("⚠️ OneSignal SDK henüz yüklenmedi, bekleniyor...");
+    console.error("❌ OneSignal SDK yüklenemedi.");
     return;
   }
 
   window.OneSignalDeferred.push(async function (OneSignal) {
     try {
-      // ⏳ SDK tamamen hazır olana kadar küçük bekleme
-      await new Promise((r) => setTimeout(r, 1000));
+      // OneSignal tamamen init olduktan sonra işlem yap
+      await OneSignal.init({
+        appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4",
+        serviceWorkerPath: `${location.origin}/sw.js`,
+        serviceWorkerParam: { scope: "/" },
+        allowLocalhostAsSecureOrigin: true,
+      });
 
-      // Mevcut externalId (OneSignal user id)
+      console.log("✅ OneSignal init tamamlandı.");
+
+      // Mevcut externalId (login sync)
       const currentExternalId = await OneSignal.User.getExternalId?.();
 
-      // 🔹 Kullanıcı giriş yaptıysa
       if (userId && currentExternalId !== userId) {
         await OneSignal.login(userId);
-        console.log("✅ OneSignal login:", userId);
-      }
-      // 🔹 Kullanıcı çıkış yaptıysa
-      else if (!userId && currentExternalId) {
+        console.log("🔐 OneSignal login:", userId);
+      } else if (!userId && currentExternalId) {
         await OneSignal.logout();
         console.log("👋 OneSignal logout yapıldı.");
-      }
-      // 🔹 Zaten güncel
-      else {
-        console.log("ℹ️ OneSignal zaten senkron durumda:", currentExternalId);
+      } else {
+        console.log("ℹ️ OneSignal zaten güncel:", currentExternalId);
       }
     } catch (err) {
-      console.error("❌ OneSignal işlem hatası:", err);
+      console.error("❌ OneSignal hata:", err);
     }
   });
 }
 
 /**
- * 🧩 Supabase oturum değişimlerini dinle
+ * ✅ 3️⃣ Supabase oturum değişimlerini dinle
  */
 supabase.auth.onAuthStateChange((event, currentSession) => {
   session.value = currentSession;
@@ -56,7 +78,7 @@ supabase.auth.onAuthStateChange((event, currentSession) => {
 });
 
 /**
- * 🚀 Başlangıçta mevcut kullanıcıyı kontrol et
+ * ✅ 4️⃣ Başlangıçta mevcut kullanıcıyı kontrol et
  */
 (async () => {
   const {
@@ -66,6 +88,6 @@ supabase.auth.onAuthStateChange((event, currentSession) => {
 })();
 
 /**
- * 🪄 Vue uygulamasını başlat
+ * ✅ 5️⃣ Vue uygulamasını başlat
  */
 app.mount("#app");
