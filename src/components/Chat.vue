@@ -18,7 +18,7 @@ async function fetchMessages() {
   try {
     loading.value = true;
     const { data, error } = await supabase
-      .from("chat_messages")
+      .from("chat_messages") // ✅ doğru tablo
       .select(`
         id, 
         content, 
@@ -32,7 +32,7 @@ async function fetchMessages() {
     if (error) throw error;
     messages.value = data || [];
   } catch (error) {
-    console.error("Mesajlar alınırken hata:", error);
+    console.error("❌ Mesajlar alınırken hata:", error.message);
   } finally {
     loading.value = false;
     scrollToBottom();
@@ -63,7 +63,7 @@ async function ensureProfile(user) {
       });
     }
   } catch (err) {
-    console.warn("Profil kontrolü hatası:", err.message);
+    console.warn("⚠️ Profil kontrolü hatası:", err.message);
   }
 }
 
@@ -79,14 +79,17 @@ async function addMessage() {
   newMessage.value = "";
 
   try {
-    const { error } = await supabase.from("chat_messages").insert({
-      sender_id: user.id,
-      recipient_id: null,
-      content,
-    });
+    const { error } = await supabase
+      .from("chat_messages") // ✅ doğru tablo
+      .insert({
+        sender_id: user.id,
+        recipient_id: null,
+        content,
+      });
+
     if (error) throw error;
   } catch (err) {
-    console.error("Mesaj gönderme hatası:", err.message);
+    console.error("❌ Mesaj gönderme hatası:", err.message);
     newMessage.value = temp;
   }
 }
@@ -110,7 +113,7 @@ onMounted(async () => {
         filter: "recipient_id=is.null",
       },
       (payload) => {
-        console.log("Yeni mesaj:", payload.new);
+        console.log("🟣 Yeni mesaj geldi:", payload.new);
         fetchMessages();
       }
     )
