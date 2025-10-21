@@ -16,9 +16,9 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
     <!-- ✅ PWA Manifest -->
-    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- ✅ OneSignal SDK (v16) -->
+    <!-- ✅ OneSignal SDK v16 -->
     <script
       src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
       async
@@ -31,11 +31,11 @@
       window.OneSignalDeferred.push(async function (OneSignal) {
         try {
           await OneSignal.init({
-            appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // ⚡ Yeni App ID
+            appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // ⚡ Senin App ID
             safari_web_id: null, // Safari kullanılmıyorsa boş bırak
             notifyButton: { enable: false },
             allowLocalhostAsSecureOrigin: true,
-            serviceWorkerPath: "/sw.js", // ✅ senin worker dosyanın adı bu olmalı
+            serviceWorkerPath: `${location.origin}/sw.js`, // ✅ Vercel için tam URL
             serviceWorkerParam: { scope: "/" },
           });
 
@@ -56,5 +56,17 @@
 
     <!-- ✅ Vue Entry -->
     <script type="module" src="/src/main.js"></script>
+
+    <!-- ✅ PWA Service Worker Kaydı -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .then((reg) => console.log("✅ Service Worker kayıt edildi:", reg.scope))
+            .catch((err) => console.error("❌ Service Worker kaydı hatası:", err));
+        });
+      }
+    </script>
   </body>
 </html>
