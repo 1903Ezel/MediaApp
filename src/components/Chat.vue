@@ -181,10 +181,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="bg-black/40 rounded-xl flex flex-col h-full shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
+  <div class="flex flex-col h-full bg-black/40 rounded-xl shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
     
     <!-- SABIT ÜST BAR - WhatsApp gibi -->
-    <div class="p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30 shrink-0">
+    <div class="shrink-0 p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30">
       <div class="flex items-center gap-3">
         <MessageSquare :size="24" class="text-purple-400" />
         <h2 class="text-xl font-bold text-white">Grup Sohbet Odası</h2>
@@ -195,7 +195,7 @@ onMounted(async () => {
       </button>
     </div>
 
-    <!-- MESAJ ALANI - Scroll olacak kısım -->
+    <!-- MESAJ ALANI - SADECE BURASI SCROLL OLACAK -->
     <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
       <div v-if="loading" class="text-white/50 text-center py-8">
         Mesajlar yükleniyor...
@@ -228,23 +228,25 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- SABIT ALT BAR - Mesaj yazma alanı -->
-    <form @submit.prevent="addMessage" class="p-4 flex gap-3 bg-gray-900/80 border-t border-purple-500/30 shrink-0">
-      <input
-        v-model="newMessage"
-        type="text"
-        placeholder="Mesajınızı yazın..."
-        class="flex-1 px-4 py-3 rounded-full bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
-        required
-      />
-      <button
-        type="submit"
-        class="p-3 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold transition disabled:bg-gray-500 disabled:opacity-50"
-        :disabled="newMessage.trim() === '' || !session?.user"
-      >
-        <Send :size="20" />
-      </button>
-    </form>
+    <!-- SABIT ALT BAR - Mesaj yazma alanı ASLA HAREKET ETMEYECEK -->
+    <div class="shrink-0 p-4 bg-gray-900/80 border-t border-purple-500/30">
+      <form @submit.prevent="addMessage" class="flex gap-3">
+        <input
+          v-model="newMessage"
+          type="text"
+          placeholder="Mesajınızı yazın..."
+          class="flex-1 px-4 py-3 rounded-full bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+          required
+        />
+        <button
+          type="submit"
+          class="p-3 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold transition disabled:bg-gray-500 disabled:opacity-50"
+          :disabled="newMessage.trim() === '' || !session?.user"
+        >
+          <Send :size="20" />
+        </button>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -267,5 +269,21 @@ onMounted(async () => {
     border-radius: 0;
     border: none;
   }
+}
+
+/* KESİN SABIT LAYOUT */
+.flex-col {
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* Tam ekran yüksekliği */
+}
+
+.shrink-0 {
+  flex-shrink: 0; /* Asla küçülmesin */
+}
+
+.flex-1 {
+  flex: 1; /* Mesaj alanı kalan tüm alanı kaplasın */
+  min-height: 0; /* Scroll için gerekli */
 }
 </style>
