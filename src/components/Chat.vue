@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
-import { Send, LogOut, MessageSquare } from "lucide-vue-next";
+import { Send, LogOut, MessageSquare, Bell } from "lucide-vue-next"; // BELL EKLENDİ
 import { session } from '../store.js'; 
 import notificationService from '../services/notificationService.js'; 
 
@@ -94,6 +94,45 @@ async function addMessage() {
 
 async function handleLogout() {
     await supabase.auth.signOut();
+}
+
+// YENİ: TEST BİLDİRİM FONKSİYONU
+async function testNotification() {
+  if (!session.value?.user) {
+    alert('❌ Önce giriş yapmalısınız!');
+    return;
+  }
+  
+  try {
+    console.log('🧪 Bildirim testi başlatılıyor...');
+    
+    // Push izni iste
+    const result = await notificationService.requestPermission(session.value.user.id);
+    
+    if (result) {
+      alert('✅ Bildirim izni başarılı!');
+      
+      // Abonelikleri kontrol et
+      const { data: subs } = await supabase
+        .from('push_subscriptions')
+        .select('*')
+        .eq('user_id', session.value.user.id);
+      
+      console.log('📋 Aboneliklerim:', subs);
+      
+      if (subs && subs.length > 0) {
+        alert(`📱 ${subs.length} adet aboneliğiniz var!`);
+      } else {
+        alert('⚠️ Abonelik oluşmadı!');
+      }
+    } else {
+      alert('❌ Bildirim izni alınamadı!');
+    }
+    
+  } catch (error) {
+    console.error('💥 Test hatası:', error);
+    alert('❌ Hata: ' + error.message);
+  }
 }
 
 // YENİ: Otomatik push aboneliği fonksiyonu
@@ -189,10 +228,24 @@ onMounted(async () => {
         <MessageSquare :size="24" class="text-purple-400" />
         <h2 class="text-xl font-bold text-white">Grup Sohbet Odası</h2>
       </div>
-      <button v-if="session?.user" @click="handleLogout" class="text-sm text-red-400 hover:text-red-500 flex items-center gap-1 transition">
-        <LogOut :size="18" />
-        Çıkış Yap
-      </button>
+      <div class="flex gap-2">
+        <!-- YENİ: TEST BİLDİRİM BUTONU -->
+        <button 
+          @click="testNotification" 
+          class="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg transition flex items-center gap-1"
+        >
+          <Bell :size="16" />
+          Test Bildirim
+        </button>
+        <button 
+          v-if="session?.user" 
+          @click="handleLogout" 
+          class="text-sm text-red-400 hover:text-red-500 flex items-center gap-1 transition"
+        >
+          <LogOut :size="18" />
+          Çıkış Yap
+        </button>
+      </div>
     </div>
 
     <!-- MESAJ ALANI - SADECE BURASI SCROLL OLACAK -->
