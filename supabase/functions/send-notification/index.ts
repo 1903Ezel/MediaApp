@@ -1,86 +1,100 @@
 // supabase/functions/send-notification/index.ts
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.44.0";
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-// 🚨 ÖNEMLİ: Bunları Supabase Environment Variables'a (Ayarlar -> Edge Functions -> Secrets) ekleyin.
-// OneSignal REST API Key'i ve App ID'niz
-const ONE_SIGNAL_API_KEY = Deno.env.get("ONE_SIGNAL_API_KEY");
-const ONE_SIGNAL_APP_ID = Deno.env.get("ONE_SIGNAL_APP_ID");
+// 🚨🚨 CRITICAL: Supabase Secrets (Ortam Değişkenleri) olarak ayarlanmış değerler
+// Bu değişkenler Supabase Dashboard -> Edge Functions -> Variables kısmından ayarlanmalıdır.
+const ONE_SIGNAL_APP_ID = Deno.env.get("VITE_ONESIGNAL_APP_ID");
+const ONE_SIGNAL_REST_API_KEY = Deno.env.get("VITE_ONESIGNAL_REST_API_KEY");
+
+if (!ONE_SIGNAL_APP_ID || !ONE_SIGNAL_REST_API_KEY) {
+    throw new Error("OneSignal API anahtarları Edge Function ortam değişkenlerinde ayarlanmadı.");
+}
 
 serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
-
   try {
     const { sender_id, title, body, url } = await req.json();
 
-    if (!sender_id || !title || !body || !ONE_SIGNAL_API_KEY || !ONE_SIGNAL_APP_ID) {
-      return new Response(
-        JSON.stringify({ error: "Eksik parametre veya sır (secret) eksik." }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+    if (!sender_id) {
+        return new Response(JSON.stringify({ error: "Sender ID eksik." }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+        });
     }
 
-    // Supabase Service Role İstemcisi
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } }
-    );
-
-    // 1. Gönderici Haricindeki Tüm Kullanıcıların OneSignal ID'lerini Al
-    const { data: subscriptions, error: subError } = await supabaseClient
-      .from('push_subscriptions')
-      .select('subscription') // OneSignal Player ID
-      .eq('is_active', true)
-      .neq('user_id', sender_id); // Mesajı gönderen hariç
-
-    if (subError) throw subError;
-
-    if (!subscriptions || subscriptions.length === 0) {
-      console.log("Bildirim gönderilecek aktif abonelik bulunamadı.");
-      return new Response(JSON.stringify({ message: "Abonelik yok." }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+    // Supabase'den sadece bu kullanıcıya ait push aboneliklerini getir
+    const supabaseAnonKey = req.headers.get('Authorization')?.replace('Bearer ', '');
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    
+    if (!supabaseAnonKey || !supabaseUrl) {
+        throw new Error("Supabase URL veya Anon Key (Authorization) eksik.");
     }
 
-    const playerIds = subscriptions.map(sub => sub.subscription);
+    // NOTE: Edge Function içinde Supabase'e erişmek için fetch kullanıyoruz
+    const { data: subscriptions, error } = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?select=subscription&user_id=neq.${sender_id}`, {
+        method: 'GET',
+        headers: {
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+        }
+    }).then(res => res.json());
 
-    // 2. OneSignal API'sine Bildirim Gönder
-    const oneSignalPayload = {
-      app_id: ONE_SIGNAL_APP_ID,
-      include_player_ids: playerIds,
-      headings: { en: title, tr: title },
-      contents: { en: body, tr: body },
-      url: url,
+    if (error) throw error;
+
+    const playerIds = subscriptions.map(s => s.subscription);
+
+    if (playerIds.length === 0) {
+        return new Response(JSON.stringify({ message: "Hedef abone bulunamadı." }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        });
+    }
+
+    // OneSignal Bildirim Gönderme Yapılandırması
+    const notification = {
+        app_id: ONE_SIGNAL_APP_ID,
+        // Bu, gönderici hariç tüm kullanıcılara bildirim gönderir.
+        include_player_ids: playerIds, 
+        contents: {
+            en: body,
+            tr: body,
+        },
+        headings: {
+            en: title,
+            tr: title,
+        },
+        url: url,
+        data: {
+            sender_id: sender_id,
+            type: "new_message"
+        }
     };
 
-    const response = await fetch("https://onesignal.com/api/v1/notifications", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        Authorization: `Basic ${ONE_SIGNAL_API_KEY}`,
-      },
-      body: JSON.stringify(oneSignalPayload),
+    // OneSignal API'ye POST isteği
+    const oneSignalResponse = await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Basic ${ONE_SIGNAL_REST_API_KEY}`,
+        },
+        body: JSON.stringify(notification),
     });
 
-    const result = await response.json();
-    console.log("OneSignal yanıtı:", result);
+    const result = await oneSignalResponse.json();
 
-    if (response.ok) {
-      return new Response(
-        JSON.stringify({ success: true, oneSignalResponse: result }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    } else {
-      throw new Error(`OneSignal API hatası: ${result.errors?.join(', ')}`);
+    if (!oneSignalResponse.ok) {
+        console.error("OneSignal API hatası:", result);
+        throw new Error(`OneSignal API hatası: ${result.errors?.join(', ')}`);
     }
 
+    return new Response(JSON.stringify({ message: "Bildirim başarıyla gönderildi", result }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
   } catch (error) {
-    console.error("Fonksiyon hatası:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error("Edge Function hatası:", error.message);
+    return new Response(JSON.stringify({ error: `Edge Function hatası: ${error.message}` }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
