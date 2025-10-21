@@ -1,29 +1,24 @@
 // src/services/notificationService.js
-import { supabase } from '../supabaseClient.js' // Supabase istemcisini import et [cite: 2]
+import { supabase } from '../supabaseClient.js' 
 
 class NotificationService {
-  constructor() {
-    this.oneSignalReady = false;
-  }
 
-  // OneSignal'ın yüklenmesini bekleyen mevcut fonksiyonunuz [cite: 4]
+  // Sadece OneSignal'ın yüklenmesini bekler, başlatmaya çalışmaz.
   async waitForOneSignal() {
     return new Promise((resolve) => {
-      if (this.oneSignalReady && window.OneSignal) return resolve(window.OneSignal);
-
-      const interval = setInterval(() => {
-        if (window.OneSignalDeferred) {
-          window.OneSignalDeferred.push(async (OneSignal) => {
-            this.oneSignalReady = true;
-            clearInterval(interval);
-            resolve(OneSignal);
-          });
-        }
-      }, 300);
+      // OneSignalDeferred dizisi var mı kontrol et.
+      if (!window.OneSignalDeferred) {
+          console.error("❌ OneSignalDeferred bulunamadı. SDK kurulumunu kontrol edin.");
+          return resolve(null);
+      }
+      
+      // OneSignalDeferred'a bir callback ekleyerek SDK'nın hazır olmasını bekleriz.
+      window.OneSignalDeferred.push(async (OneSignal) => {
+          resolve(OneSignal);
+      });
     });
   }
 
-  // Kullanıcıdan izin isteyen ve OneSignal ID'yi kaydeden mevcut fonksiyonunuz [cite: 6]
   async requestPermission(userId) {
     if (!userId) {
         console.warn("⚠️ Kullanıcı ID'si olmadan bildirim izni istenemez.");
@@ -33,7 +28,11 @@ class NotificationService {
     try {
       const OneSignal = await this.waitForOneSignal();
 
+      if (!OneSignal) return false;
+
       console.log("🔔 OneSignal başlatılıyor...");
+      
+      // İzin durumunu kontrol et
       const permission = await OneSignal.Notifications.requestPermission();
 
       if (permission !== 'granted') {
@@ -44,12 +43,24 @@ class NotificationService {
       console.log("✅ Bildirim izni verildi!");
 
       // 1. OneSignal'a kullanıcı ID'sini set et
-      await OneSignal.User.PushSubscription.setExternalId(userId);
+      // Bu adım, OneSignal'ın 400 Bad Request hatasını çözmeye yardımcı olabilir.
+      await OneSignal.User.addTag("user_id", userId);
+      await OneSignal.User.addAlias("external_id", userId); 
+
       const deviceId = await OneSignal.User.PushSubscription.id;
 
       if (!deviceId) {
-        console.warn("⚠️ Cihaz ID alınamadı, kullanıcı kaydedilmemiş olabilir.");
-        return false;
+         // Cihaz ID hemen gelmeyebilir, biraz bekleyelim.
+         await new Promise(r => setTimeout(r, 1000));
+         const tempDeviceId = await OneSignal.User.PushSubscription.id;
+
+         if (!tempDeviceId) {
+           console.warn("⚠️ Cihaz ID hala alınamadı, abonelik başarısız.");
+           return false;
+         }
+         
+         await this.saveSubscription(userId, tempDeviceId, 'web');
+         return true;
       }
 
       console.log("📱 OneSignal cihaz ID:", deviceId);
@@ -63,7 +74,6 @@ class NotificationService {
     }
   }
 
-  // OneSignal ID'yi Supabase'e kaydeden mevcut fonksiyonunuz 
   async saveSubscription(userId, playerId, platform) {
     const deviceInfo = {
       userAgent: navigator.userAgent,
@@ -72,7 +82,7 @@ class NotificationService {
     };
 
     const { error } = await supabase
-      .from('push_subscriptions') // Yeni tablo adı ile uyumlu 
+      .from('push_subscriptions') 
       .upsert({
         user_id: userId,
         subscription: playerId,
@@ -80,7 +90,7 @@ class NotificationService {
         device_info: deviceInfo,
         is_active: true
       }, {
-        onConflict: 'subscription'
+        onConflict: 'subscription' 
       });
 
     if (error) {
