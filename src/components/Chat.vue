@@ -1,26 +1,22 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
-import { supabase } from "../supabaseClient.js"; 
+import { supabase } from "../supabaseClient.js";
 import { Send } from "lucide-vue-next";
 
 const loading = ref(true);
 const messages = ref([]);
 const newMessage = ref("");
 const chatContainer = ref(null);
-const session = ref(null); 
+const session = ref(null);
 
-// --- Oturumu Al ---
 async function getSession() {
   const { data: { session: currentSession } } = await supabase.auth.getSession();
   session.value = currentSession;
 }
 
-// --- Mesajları Getir ---
 async function fetchMessages() {
   try {
     loading.value = true;
-    
-    // Grup sohbet mesajları (recipient_id null olanlar)
     const { data, error } = await supabase
       .from("chat_messages")
       .select(`
@@ -30,98 +26,19 @@ async function fetchMessages() {
         sender_id,
         sender:profiles!chat_messages_sender_id_fkey(id, username)
       `)
-      .is('recipient_id', null)  // Sadece grup mesajları
+      .is("recipient_id", null)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
     messages.value = data || [];
   } catch (error) {
-    console.error("Mesajlar çekilirken hata:", error);
-    messages.value = [];
+    console.error("Mesajlar alınırken hata:", error);
   } finally {
     loading.value = false;
     scrollToBottom();
   }
 }
 
-// --- Profil Oluştur veya Al ---
-async function ensureUserProfile(userId, userEmail) {
-  try {
-    // Önce profil var mı kontrol et
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id, username')
-      .eq('id', userId)
-      .single();
-
-    if (existingProfile) {
-      return existingProfile;
-    }
-
-    // Profil yoksa oluştur
-    const username = userEmail?.split('@')[0] || 'Kullanıcı';
-    const { data: newProfile, error } = await supabase
-      .from('profiles')
-      .insert({
-        id: userId,
-        username: username
-      })
-      .select('id, username')
-      .single();
-
-    if (error) throw error;
-    return newProfile;
-    
-  } catch (error) {
-    console.error('Profil işlemi hatası:', error);
-    return null;
-  }
-}
-
-// --- Mesaj Gönder ---
-async function addMessage() {
-  const content = newMessage.value.trim();
-  if (content === "") return;
-
-  const tempMessage = newMessage.value; 
-  newMessage.value = ""; 
-
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      console.error("Kullanıcı oturumu bulunamadı.");
-      alert("Giriş bilgileriniz bulunamadı.");
-      newMessage.value = tempMessage;
-      return;
-    }
-
-    // Profil kontrolü ve oluşturma
-    await ensureUserProfile(user.id, user.email);
-
-    // Grup mesajı gönder (recipient_id = null)
-    const { error } = await supabase.from("chat_messages").insert({
-      content: content,
-      sender_id: user.id,
-      recipient_id: null,  // Grup mesajı için null
-      status: 'sent'       // Status ekle
-    });
-
-    if (error) {
-      newMessage.value = tempMessage; 
-      throw error;
-    }
-
-    console.log("Mesaj başarıyla gönderildi.");
-
-  } catch (error) {
-    console.error("Mesaj gönderme hatası:", error.message);
-    alert("Mesaj gönderilirken bir hata oluştu: " + error.message);
-    newMessage.value = tempMessage;
-  }
-}
-
-// --- Scroll to Bottom ---
 function scrollToBottom() {
   nextTick(() => {
     if (chatContainer.value) {
@@ -130,43 +47,79 @@ function scrollToBottom() {
   });
 }
 
-// --- Realtime ve Oturum Abonelikleri ---
+async function ensureProfile(user) {
+  try {
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .single();
+
+    if (!existing) {
+      await supabase.from("profiles").insert({
+        id: user.id,
+        email: user.email,
+        username: user.email.split("@")[0],
+      });
+    }
+  } catch (err) {
+    console.warn("Profil kontrolü hatası:", err.message);
+  }
+}
+
+async function addMessage() {
+  const content = newMessage.value.trim();
+  if (content === "") return;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return alert("Giriş yapmalısınız.");
+
+  await ensureProfile(user);
+  const temp = newMessage.value;
+  newMessage.value = "";
+
+  try {
+    const { error } = await supabase.from("chat_messages").insert({
+      sender_id: user.id,
+      recipient_id: null,
+      content,
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.error("Mesaj gönderme hatası:", err.message);
+    newMessage.value = temp;
+  }
+}
+
 onMounted(async () => {
-  await getSession(); 
-  
+  await getSession();
+  await fetchMessages();
+
   supabase.auth.onAuthStateChange((_, currentSession) => {
     session.value = currentSession;
   });
 
-  await fetchMessages();
-
-  // Realtime abonelik
   const subscription = supabase
-    .channel("group_chat")
+    .channel("chat-room")
     .on(
       "postgres_changes",
-      { 
-        event: "INSERT", 
-        schema: "public", 
+      {
+        event: "INSERT",
+        schema: "public",
         table: "chat_messages",
-        filter: "recipient_id=is.null"  // Sadece grup mesajlarını dinle
+        filter: "recipient_id=is.null",
       },
       (payload) => {
-        console.log("Yeni grup mesajı alındı:", payload);
+        console.log("Yeni mesaj:", payload.new);
         fetchMessages();
       }
     )
-    .subscribe((status) => {
-      console.log("Realtime subscription status:", status);
-    });
+    .subscribe();
 
-  // Cleanup function
-  return () => {
-    subscription.unsubscribe();
-  };
+  watch(messages, scrollToBottom, { deep: true });
+
+  return () => subscription.unsubscribe();
 });
-
-watch(messages, scrollToBottom, { deep: true });
 </script>
 
 <template>
@@ -177,48 +130,33 @@ watch(messages, scrollToBottom, { deep: true });
       Grup Sohbet Odası 💬
     </h2>
 
-    <div
-      ref="chatContainer"
-      class="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar"
-    >
+    <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
       <div v-if="loading" class="text-white/50 text-center py-8">
         Mesajlar yükleniyor...
       </div>
-      <div
-        v-else-if="messages.length === 0"
-        class="text-white/50 text-center py-8"
-      >
+      <div v-else-if="messages.length === 0" class="text-white/50 text-center py-8">
         Henüz mesaj yok. İlk mesajı sen gönder!
       </div>
 
       <div
-        v-for="message in messages"
-        :key="message.id"
+        v-for="m in messages"
+        :key="m.id"
         class="flex"
-        :class="{
-          'justify-end': session?.user?.id === message.sender_id,
-        }"
+        :class="{ 'justify-end': session?.user?.id === m.sender_id }"
       >
         <div
-          class="max-w-[80%] p-3 rounded-xl shadow-md transition-all duration-200"
+          class="max-w-[80%] p-3 rounded-xl shadow-md"
           :class="{
-            'bg-purple-600 text-white rounded-br-none':
-              session?.user?.id === message.sender_id,
-            'bg-gray-700 text-white rounded-bl-none':
-              session?.user?.id !== message.sender_id,
+            'bg-purple-600 text-white rounded-br-none': session?.user?.id === m.sender_id,
+            'bg-gray-700 text-white rounded-bl-none': session?.user?.id !== m.sender_id,
           }"
         >
           <div class="text-xs font-semibold mb-1 text-purple-200">
-            {{ message.sender?.username || "Bilinmeyen Kullanıcı" }}
+            {{ m.sender?.username || "Anonim" }}
           </div>
-          <p class="whitespace-pre-wrap">{{ message.content }}</p>
+          <p>{{ m.content }}</p>
           <div class="text-[10px] text-right mt-1 text-purple-300">
-            {{
-              new Date(message.created_at).toLocaleTimeString("tr-TR", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            }}
+            {{ new Date(m.created_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) }}
           </div>
         </div>
       </div>
@@ -229,12 +167,12 @@ watch(messages, scrollToBottom, { deep: true });
         v-model="newMessage"
         type="text"
         placeholder="Mesajınızı yazın..."
-        class="flex-1 px-4 py-3 rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:border-purple-500 transition-all"
+        class="flex-1 px-4 py-3 rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:border-purple-500"
         required
       />
       <button
         type="submit"
-        class="p-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:bg-gray-500 shadow-md hover:shadow-lg"
+        class="p-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition disabled:bg-gray-500"
         :disabled="newMessage.trim() === ''"
       >
         <Send :size="20" />
