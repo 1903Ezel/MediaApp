@@ -1,15 +1,13 @@
-// src/services/notificationService.js
-import { supabase } from '../supabase.js'
+import { supabase } from '../supabaseClient.js'
 
 class NotificationService {
   constructor() {
     this.oneSignalReady = false;
   }
 
-  // 🔧 OneSignal hazır mı kontrol et
   async waitForOneSignal() {
     return new Promise((resolve) => {
-      if (this.oneSignalReady) return resolve(window.OneSignal);
+      if (this.oneSignalReady && window.OneSignal) return resolve(window.OneSignal);
 
       const interval = setInterval(() => {
         if (window.OneSignalDeferred) {
@@ -23,7 +21,6 @@ class NotificationService {
     });
   }
 
-  // 🔔 OneSignal Üzerinden Push İzni Al
   async requestPermission(userId) {
     try {
       const OneSignal = await this.waitForOneSignal();
@@ -38,7 +35,6 @@ class NotificationService {
 
       console.log("✅ Bildirim izni verildi!");
 
-      // Kullanıcıyı OneSignal'a kaydet
       await OneSignal.User.PushSubscription.setExternalId(userId);
       const deviceId = await OneSignal.User.PushSubscription.id;
 
@@ -48,8 +44,6 @@ class NotificationService {
       }
 
       console.log("📱 OneSignal cihaz ID:", deviceId);
-
-      // Supabase'e kaydet
       await this.saveSubscription(userId, deviceId, 'web');
 
       alert("✅ Bildirimlere başarıyla abone olundu!");
@@ -61,7 +55,6 @@ class NotificationService {
     }
   }
 
-  // 💾 Supabase'e kaydet
   async saveSubscription(userId, playerId, platform) {
     const deviceInfo = {
       userAgent: navigator.userAgent,
@@ -73,8 +66,8 @@ class NotificationService {
       .from('push_subscriptions')
       .upsert({
         user_id: userId,
-        subscription: playerId, // OneSignal player ID
-        platform: platform,
+        subscription: playerId,
+        platform,
         device_info: deviceInfo,
         is_active: true
       }, {
