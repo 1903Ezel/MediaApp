@@ -1,24 +1,22 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
-// Eski 'supabaseClient' yerine artık 'Bolt DatabaseClient' adını varsayıyoruz, 
-// ancak mevcut dosya yapınızda 'supabaseClient.js' kullandığınız için onu referans alıyorum.
 import { supabase } from "../supabaseClient.js"; 
 import { Send, LogOut, MessageSquare } from "lucide-vue-next";
-import { session } from '../store.js'; // Global oturumu kullanıyoruz [cite: 39]
-import notificationService from '../services/notificationService.js'; // Bildirim servisiniz [cite: 2]
+import { session } from '../store.js'; 
+import notificationService from '../services/notificationService.js'; 
 
 const loading = ref(true);
 const messages = ref([]);
 const newMessage = ref("");
 const chatContainer = ref(null);
-const subscription = ref(null); // Realtime aboneliğini tutmak için
+const subscription = ref(null); 
 
 // Mesajları yeni 'messages' tablosundan alıyoruz
 async function fetchMessages() {
   try {
     loading.value = true;
     const { data, error } = await supabase
-      .from("messages") // ⭐️ Yeni tablo adı: messages
+      .from("messages") 
       .select(`
         id, 
         content, 
@@ -46,7 +44,7 @@ function scrollToBottom() {
   });
 }
 
-// Profilin varlığını kontrol eden ve yoksa oluşturan mevcut fonksiyonunuz [cite: 23]
+// Profilin varlığını kontrol eden ve yoksa oluşturan fonksiyon
 async function ensureProfile(user) {
   try {
     const { data: existing } = await supabase
@@ -56,14 +54,15 @@ async function ensureProfile(user) {
       .single();
 
     if (!existing) {
+      // Eğer kullanıcı profil oluşturmadan giriş yaptıysa, temel bir profil oluştururuz.
       await supabase.from("profiles").insert({
         id: user.id,
-        email: user.email,
-        username: user.email.split("@")[0],
+        // E-posta adresinin @ işaretinden önceki kısmını kullanıcı adı olarak kullanır.
+        username: user.email ? user.email.split("@")[0] : `user_${user.id.substring(0, 8)}`, 
       });
     }
   } catch (err) {
-    console.warn("⚠️ Profil kontrolü hatası (yeni kayıt olabilir):", err.message);
+    console.error("⚠️ Profil kontrolü hatası:", err.message);
   }
 }
 
@@ -71,16 +70,16 @@ async function addMessage() {
   const content = newMessage.value.trim();
   if (content === "") return;
 
-  const user = session.value?.user; // Global store'dan al [cite: 40]
+  const user = session.value?.user; 
   if (!user) return alert("Giriş yapmalısınız.");
 
-  await ensureProfile(user); // Profilin varlığından emin ol [cite: 27]
+  await ensureProfile(user); 
   const temp = newMessage.value;
-  newMessage.value = ""; // Mesajı hemen temizle
+  newMessage.value = ""; 
 
   try {
     const { error } = await supabase
-      .from("messages") // ⭐️ Yeni tablo adı: messages
+      .from("messages") 
       .insert({
         sender_id: user.id,
         content,
@@ -89,7 +88,7 @@ async function addMessage() {
     if (error) throw error;
   } catch (err) {
     console.error("❌ Mesaj gönderme hatası:", err.message);
-    newMessage.value = temp; // Hata durumunda mesajı geri yükle [cite: 30]
+    newMessage.value = temp; 
   }
 }
 
@@ -101,8 +100,8 @@ onMounted(async () => {
   // 1. İlk mesajları getir
   await fetchMessages();
 
-  // 2. Realtime Aboneliği Kur (Tekrar tekrar fetchMessages çağırmak yerine, mesajı doğrudan ekleyelim)
-  if (subscription.value) subscription.value.unsubscribe(); // Önceki aboneliği temizle
+  // 2. Realtime Aboneliği Kur 
+  if (subscription.value) subscription.value.unsubscribe(); 
 
   subscription.value = supabase
     .channel("grup-chat")
@@ -111,7 +110,7 @@ onMounted(async () => {
       {
         event: "INSERT",
         schema: "public",
-        table: "messages", // ⭐️ Yeni tablo adı: messages
+        table: "messages", 
       },
       async (payload) => {
         // Yeni mesaj verisi geldi, profil bilgisini de alıp listeye ekle
@@ -126,14 +125,12 @@ onMounted(async () => {
             sender: senderData,
         };
 
-        // Mesajı listeye ekle ve UI'yı güncelle
         messages.value.push(newMessage);
       }
     )
     .subscribe();
 
-  // 3. Bildirim İznini İste
-  // Kullanıcı giriş yaptıysa bildirim iznini iste ve cihazı kaydet
+  // 3. Bildirim İznini İste ve Cihazı Kaydet (Sadece giriş yapılmışsa)
   watch(session, async (newSession) => {
     if (newSession?.user) {
         await notificationService.requestPermission(newSession.user.id);
@@ -141,7 +138,7 @@ onMounted(async () => {
   }, { immediate: true });
 
   // 4. Yeni mesaj geldiğinde otomatik aşağı kaydır
-  watch(messages, scrollToBottom, { deep: true, flush: 'post' }); // 'post' ile DOM güncellemesi sonrası çalışmasını sağla
+  watch(messages, scrollToBottom, { deep: true, flush: 'post' }); 
 
   return () => {
     // Bileşen ayrıldığında Realtime aboneliğini temizle
@@ -227,8 +224,4 @@ onMounted(async () => {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(168, 85, 247, 0.7);
 }
-
-/* Genel uygulama arayüzü için yüksekliği tam olarak ayarla */
-/* Uygulamanızın ana App.vue veya index.html dosyasında #app/main div'inin 
-   h-full/h-screen/min-h-screen class'ına sahip olduğundan emin olun */
 </style>
