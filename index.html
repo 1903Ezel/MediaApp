@@ -1,4 +1,3 @@
-html
 <!doctype html>
 <html lang="tr">
   <head>
@@ -32,11 +31,12 @@ html
       window.OneSignalDeferred.push(async function (OneSignal) {
         try {
           await OneSignal.init({
-            appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4",
-            safari_web_id: null,
+            appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // ⚡ Yeni App ID
+            safari_web_id: null, // Safari kullanılmıyorsa boş bırak
             notifyButton: { enable: false },
-            allowLocalhostAsSecureOrigin: true
-            // VitePWA service worker kullanıldığı için OneSignal'ın kendi SW'ini devre dışı bırak
+            allowLocalhostAsSecureOrigin: true,
+            serviceWorkerPath: "/sw.js", // ✅ senin worker dosyanın adı bu olmalı
+            serviceWorkerParam: { scope: "/" },
           });
 
           console.log("✅ OneSignal SDK başarıyla init edildi.");
@@ -58,4 +58,3 @@ html
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
-
