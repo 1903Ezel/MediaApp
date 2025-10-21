@@ -1,21 +1,19 @@
 export function initOneSignal() {
   return new Promise((resolve) => {
-    // Eğer zaten yüklüyse tekrar yükleme
     if (window.OneSignal) {
-      resolve(window.OneSignal)
-      return
+      resolve(window.OneSignal);
+      return;
     }
 
-    // OneSignal global tanımı
-    window.OneSignal = window.OneSignal || []
+    window.OneSignal = window.OneSignal || [];
     window.OneSignal.push(() => {
       window.OneSignal.init({
-        appId: "ONESIGNAL_APP_ID_HERE",  // 🔹 kendi OneSignal App ID'n
+        appId: "6637009c-c223-44f0-8f70-ae3f6a5e3fc4", // 🔹 kendi OneSignal App ID'n
         notifyButton: { enable: true },
-        allowLocalhostAsSecureOrigin: true, // localhost testleri için
-      })
-      console.log("🚀 OneSignal SDK yüklendi")
-      resolve(window.OneSignal)
-    })
-  })
+        allowLocalhostAsSecureOrigin: true,
+      });
+      console.log("✅ OneSignal yüklendi");
+      resolve(window.OneSignal);
+    });
+  });
 }
