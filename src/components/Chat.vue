@@ -1,32 +1,31 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
-import { supabase } from "../supabaseClient.js";
-import { Send } from "lucide-vue-next";
+// Eski 'supabaseClient' yerine artık 'Bolt DatabaseClient' adını varsayıyoruz, 
+// ancak mevcut dosya yapınızda 'supabaseClient.js' kullandığınız için onu referans alıyorum.
+import { supabase } from "../supabaseClient.js"; 
+import { Send, LogOut, MessageSquare } from "lucide-vue-next";
+import { session } from '../store.js'; // Global oturumu kullanıyoruz [cite: 39]
+import notificationService from '../services/notificationService.js'; // Bildirim servisiniz [cite: 2]
 
 const loading = ref(true);
 const messages = ref([]);
 const newMessage = ref("");
 const chatContainer = ref(null);
-const session = ref(null);
+const subscription = ref(null); // Realtime aboneliğini tutmak için
 
-async function getSession() {
-  const { data: { session: currentSession } } = await supabase.auth.getSession();
-  session.value = currentSession;
-}
-
+// Mesajları yeni 'messages' tablosundan alıyoruz
 async function fetchMessages() {
   try {
     loading.value = true;
     const { data, error } = await supabase
-      .from("chat_messages") // ✅ doğru tablo
+      .from("messages") // ⭐️ Yeni tablo adı: messages
       .select(`
         id, 
         content, 
         created_at, 
         sender_id,
-        sender:profiles!chat_messages_sender_id_fkey(id, username)
+        sender:profiles!messages_sender_id_fkey(id, username)
       `)
-      .is("recipient_id", null)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
@@ -47,6 +46,7 @@ function scrollToBottom() {
   });
 }
 
+// Profilin varlığını kontrol eden ve yoksa oluşturan mevcut fonksiyonunuz [cite: 23]
 async function ensureProfile(user) {
   try {
     const { data: existing } = await supabase
@@ -63,7 +63,7 @@ async function ensureProfile(user) {
       });
     }
   } catch (err) {
-    console.warn("⚠️ Profil kontrolü hatası:", err.message);
+    console.warn("⚠️ Profil kontrolü hatası (yeni kayıt olabilir):", err.message);
   }
 }
 
@@ -71,69 +71,100 @@ async function addMessage() {
   const content = newMessage.value.trim();
   if (content === "") return;
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = session.value?.user; // Global store'dan al [cite: 40]
   if (!user) return alert("Giriş yapmalısınız.");
 
-  await ensureProfile(user);
+  await ensureProfile(user); // Profilin varlığından emin ol [cite: 27]
   const temp = newMessage.value;
-  newMessage.value = "";
+  newMessage.value = ""; // Mesajı hemen temizle
 
   try {
     const { error } = await supabase
-      .from("chat_messages") // ✅ doğru tablo
+      .from("messages") // ⭐️ Yeni tablo adı: messages
       .insert({
         sender_id: user.id,
-        recipient_id: null,
         content,
       });
 
     if (error) throw error;
   } catch (err) {
     console.error("❌ Mesaj gönderme hatası:", err.message);
-    newMessage.value = temp;
+    newMessage.value = temp; // Hata durumunda mesajı geri yükle [cite: 30]
   }
 }
 
+async function handleLogout() {
+    await supabase.auth.signOut();
+}
+
 onMounted(async () => {
-  await getSession();
+  // 1. İlk mesajları getir
   await fetchMessages();
 
-  supabase.auth.onAuthStateChange((_, currentSession) => {
-    session.value = currentSession;
-  });
+  // 2. Realtime Aboneliği Kur (Tekrar tekrar fetchMessages çağırmak yerine, mesajı doğrudan ekleyelim)
+  if (subscription.value) subscription.value.unsubscribe(); // Önceki aboneliği temizle
 
-  const subscription = supabase
-    .channel("chat-room")
+  subscription.value = supabase
+    .channel("grup-chat")
     .on(
       "postgres_changes",
       {
         event: "INSERT",
         schema: "public",
-        table: "chat_messages",
-        filter: "recipient_id=is.null",
+        table: "messages", // ⭐️ Yeni tablo adı: messages
       },
-      (payload) => {
-        console.log("🟣 Yeni mesaj geldi:", payload.new);
-        fetchMessages();
+      async (payload) => {
+        // Yeni mesaj verisi geldi, profil bilgisini de alıp listeye ekle
+        const { data: senderData } = await supabase
+          .from("profiles")
+          .select("id, username")
+          .eq("id", payload.new.sender_id)
+          .single();
+        
+        const newMessage = {
+            ...payload.new,
+            sender: senderData,
+        };
+
+        // Mesajı listeye ekle ve UI'yı güncelle
+        messages.value.push(newMessage);
       }
     )
     .subscribe();
 
-  watch(messages, scrollToBottom, { deep: true });
+  // 3. Bildirim İznini İste
+  // Kullanıcı giriş yaptıysa bildirim iznini iste ve cihazı kaydet
+  watch(session, async (newSession) => {
+    if (newSession?.user) {
+        await notificationService.requestPermission(newSession.user.id);
+    }
+  }, { immediate: true });
 
-  return () => subscription.unsubscribe();
+  // 4. Yeni mesaj geldiğinde otomatik aşağı kaydır
+  watch(messages, scrollToBottom, { deep: true, flush: 'post' }); // 'post' ile DOM güncellemesi sonrası çalışmasını sağla
+
+  return () => {
+    // Bileşen ayrıldığında Realtime aboneliğini temizle
+    if (subscription.value) subscription.value.unsubscribe();
+  };
 });
 </script>
 
 <template>
-  <div
-    class="bg-black/40 rounded-xl p-4 flex flex-col h-full shadow-2xl backdrop-blur-sm border border-purple-500/30"
-  >
-    <h2 class="text-2xl font-bold text-white mb-4 border-b border-white/10 pb-2">
-      Grup Sohbet Odası 💬
-    </h2>
+  <div class="bg-black/40 rounded-xl p-0 flex flex-col h-full shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
+    
+    <div class="p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30 sticky top-0 z-10">
+      <div class="flex items-center gap-3">
+        <MessageSquare :size="24" class="text-purple-400" />
+        <h2 class="text-xl font-bold text-white">Grup Sohbet Odası</h2>
+      </div>
+      <button v-if="session?.user" @click="handleLogout" class="text-sm text-red-400 hover:text-red-500 flex items-center gap-1 transition">
+        <LogOut :size="18" />
+        Çıkış Yap
+      </button>
+    </div>
 
-    <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+    <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-4 p-4 custom-scrollbar">
       <div v-if="loading" class="text-white/50 text-center py-8">
         Mesajlar yükleniyor...
       </div>
@@ -148,35 +179,35 @@ onMounted(async () => {
         :class="{ 'justify-end': session?.user?.id === m.sender_id }"
       >
         <div
-          class="max-w-[80%] p-3 rounded-xl shadow-md"
+          class="max-w-[80%] p-3 rounded-xl shadow-lg break-words"
           :class="{
             'bg-purple-600 text-white rounded-br-none': session?.user?.id === m.sender_id,
             'bg-gray-700 text-white rounded-bl-none': session?.user?.id !== m.sender_id,
           }"
         >
-          <div class="text-xs font-semibold mb-1 text-purple-200">
+          <div v-if="session?.user?.id !== m.sender_id" class="text-xs font-semibold mb-1" :class="{'text-purple-200': session?.user?.id === m.sender_id, 'text-green-300': session?.user?.id !== m.sender_id}">
             {{ m.sender?.username || "Anonim" }}
           </div>
-          <p>{{ m.content }}</p>
-          <div class="text-[10px] text-right mt-1 text-purple-300">
+          <p class="text-base">{{ m.content }}</p>
+          <div class="text-[10px] text-right mt-1 text-white/70">
             {{ new Date(m.created_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) }}
           </div>
         </div>
       </div>
     </div>
 
-    <form @submit.prevent="addMessage" class="mt-4 flex gap-3">
+    <form @submit.prevent="addMessage" class="p-4 flex gap-3 bg-gray-900/80 border-t border-purple-500/30 sticky bottom-0 z-10">
       <input
         v-model="newMessage"
         type="text"
         placeholder="Mesajınızı yazın..."
-        class="flex-1 px-4 py-3 rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:border-purple-500"
+        class="flex-1 px-4 py-3 rounded-full bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
         required
       />
       <button
         type="submit"
-        class="p-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold transition disabled:bg-gray-500"
-        :disabled="newMessage.trim() === ''"
+        class="p-3 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold transition disabled:bg-gray-500 disabled:opacity-50"
+        :disabled="newMessage.trim() === '' || !session?.user"
       >
         <Send :size="20" />
       </button>
@@ -185,6 +216,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Scrollbar stilini koruyoruz */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
@@ -195,4 +227,8 @@ onMounted(async () => {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(168, 85, 247, 0.7);
 }
+
+/* Genel uygulama arayüzü için yüksekliği tam olarak ayarla */
+/* Uygulamanızın ana App.vue veya index.html dosyasında #app/main div'inin 
+   h-full/h-screen/min-h-screen class'ına sahip olduğundan emin olun */
 </style>
