@@ -12,7 +12,7 @@ if (!ONE_SIGNAL_APP_ID || !ONE_SIGNAL_REST_API_KEY) {
 
 serve(async (req) => {
   try {
-    const { sender_id, title, body, url } = await req.json();
+    const { sender_id, message_content, sender_username } = await req.json();
 
     if (!sender_id) {
         return new Response(JSON.stringify({ error: "Sender ID eksik." }), {
@@ -50,20 +50,23 @@ serve(async (req) => {
         });
     }
 
+    // YENİ FORMAT: Kullanıcı adı + mesaj içeriği
+    const notificationTitle = sender_username || "Yeni Mesaj";
+    const notificationBody = message_content || "Yeni bir mesajınız var";
+
     // OneSignal Bildirim Gönderme Yapılandırması
     const notification = {
         app_id: ONE_SIGNAL_APP_ID,
-        // Bu, gönderici hariç tüm kullanıcılara bildirim gönderir.
         include_player_ids: playerIds, 
         contents: {
-            en: body,
-            tr: body,
+            en: notificationBody,
+            tr: notificationBody,
         },
         headings: {
-            en: title,
-            tr: title,
+            en: notificationTitle,
+            tr: notificationTitle,
         },
-        url: url,
+        url: "/", // Ana sayfaya yönlendir
         data: {
             sender_id: sender_id,
             type: "new_message"
