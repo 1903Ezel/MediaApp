@@ -209,80 +209,80 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col h-screen bg-black/40 rounded-xl shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
+  <!-- KESİN SABIT LAYOUT -->
+  <div class="chat-container">
     
     <!-- SABIT ÜST BAR - WhatsApp gibi -->
-    <div class="shrink-0 p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30 sticky top-0 z-50">
-      <div class="flex items-center gap-3">
+    <div class="chat-header">
+      <div class="header-left">
         <MessageSquare :size="24" class="text-purple-400" />
-        <h2 class="text-xl font-bold text-white">sohbet</h2>
+        <h2 class="chat-title">sohbet</h2>
       </div>
-      <div class="flex gap-2">
-        <!-- İZİN VER butonu -->
+      <div class="header-buttons">
         <button 
           @click="requestPermission" 
-          class="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg transition flex items-center gap-1"
+          class="permission-btn"
         >
           <Bell :size="16" />
-          İzin ver
+          <span class="btn-text">İzin ver</span>
         </button>
         <button 
           v-if="session?.user" 
           @click="handleLogout" 
-          class="text-sm text-red-400 hover:text-red-500 flex items-center gap-1 transition"
+          class="logout-btn"
         >
           <LogOut :size="18" />
-          Çıkış Yap
+          <span class="btn-text">Çıkış</span>
         </button>
       </div>
     </div>
 
-    <!-- MESAJ ALANI - SADECE BURASI SCROLL OLACAK -->
-    <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
-      <div v-if="loading" class="text-white/50 text-center py-8">
+    <!-- SADECE BURASI SCROLL -->
+    <div ref="chatContainer" class="messages-area">
+      <div v-if="loading" class="loading-message">
         Mesajlar yükleniyor...
       </div>
-      <div v-else-if="messages.length === 0" class="text-white/50 text-center py-8">
+      <div v-else-if="messages.length === 0" class="empty-message">
         Henüz mesaj yok. İlk mesajı sen gönder!
       </div>
 
       <div
         v-for="m in messages"
         :key="m.id"
-        class="flex"
-        :class="{ 'justify-end': session?.user?.id === m.sender_id }"
+        class="message-wrapper"
+        :class="{ 'own-message': session?.user?.id === m.sender_id }"
       >
         <div
-          class="max-w-[80%] p-3 rounded-xl shadow-lg break-words"
+          class="message-bubble"
           :class="{
-            'bg-purple-600 text-white rounded-br-none': session?.user?.id === m.sender_id,
-            'bg-gray-700 text-white rounded-bl-none': session?.user?.id !== m.sender_id,
+            'own-bubble': session?.user?.id === m.sender_id,
+            'other-bubble': session?.user?.id !== m.sender_id,
           }"
         >
-          <div v-if="session?.user?.id !== m.sender_id" class="text-xs font-semibold mb-1" :class="{'text-purple-200': session?.user?.id === m.sender_id, 'text-green-300': session?.user?.id !== m.sender_id}">
+          <div v-if="session?.user?.id !== m.sender_id" class="sender-name">
             {{ m.sender?.username || "Anonim" }}
           </div>
-          <p class="text-base">{{ m.content }}</p>
-          <div class="text-[10px] text-right mt-1 text-white/70">
+          <p class="message-content">{{ m.content }}</p>
+          <div class="message-time">
             {{ new Date(m.created_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) }}
           </div>
         </div>
       </div>
     </div>
 
-    <!-- SABIT ALT BAR - Mesaj yazma alanı ASLA HAREKET ETMEYECEK -->
-    <div class="shrink-0 p-4 bg-gray-900/80 border-t border-purple-500/30 sticky bottom-0 z-50">
-      <form @submit.prevent="addMessage" class="flex gap-3">
+    <!-- SABIT ALT BAR -->
+    <div class="input-area">
+      <form @submit.prevent="addMessage" class="message-form">
         <input
           v-model="newMessage"
           type="text"
           placeholder="Mesajınızı yazın..."
-          class="flex-1 px-4 py-3 rounded-full bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+          class="message-input"
           required
         />
         <button
           type="submit"
-          class="p-3 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold transition disabled:bg-gray-500 disabled:opacity-50"
+          class="send-btn"
           :disabled="newMessage.trim() === '' || !session?.user"
         >
           <Send :size="20" />
@@ -293,50 +293,280 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* WhatsApp benzeri scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
+/* KESİN SABIT LAYOUT - TÜM CİHAZLAR İÇİN */
+.chat-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+/* ÜST BAR - KESİNLİKLE SABIT */
+.chat-header {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(31, 41, 55, 0.8);
+  border-bottom: 1px solid rgba(168, 85, 247, 0.3);
+  min-height: 60px;
+  z-index: 1000;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chat-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: white;
+  margin: 0;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.permission-btn, .logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  white-space: nowrap; /* BUTON METNİ TEK SATIR */
+  border: none;
+  cursor: pointer;
+}
+
+.permission-btn {
+  background: rgb(22, 163, 74);
+  color: white;
+}
+
+.permission-btn:hover {
+  background: rgb(21, 128, 61);
+}
+
+.logout-btn {
+  background: transparent;
+  color: rgb(248, 113, 113);
+}
+
+.logout-btn:hover {
+  color: rgb(239, 68, 68);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.btn-text {
+  white-space: nowrap; /* METİN KESİNLİKLE TEK SATIR */
+}
+
+/* MESAJ ALANI - SADECE BURASI SCROLL */
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* SCROLLBAR STILI */
+.messages-area::-webkit-scrollbar {
   width: 6px;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
+
+.messages-area::-webkit-scrollbar-thumb {
   background: rgba(168, 85, 247, 0.5);
   border-radius: 3px;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+
+.messages-area::-webkit-scrollbar-thumb:hover {
   background: rgba(168, 85, 247, 0.7);
 }
 
-/* Mobile uyumluluk */
+.loading-message, .empty-message {
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  padding: 2rem 0;
+}
+
+/* MESAJ STILLERI */
+.message-wrapper {
+  display: flex;
+  margin-bottom: 1rem;
+}
+
+.own-message {
+  justify-content: flex-end;
+}
+
+.message-bubble {
+  max-width: 80%;
+  padding: 0.75rem;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  word-wrap: break-word;
+}
+
+.own-bubble {
+  background: rgb(147, 51, 234);
+  color: white;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.other-bubble {
+  background: rgb(55, 65, 81);
+  color: white;
+  border-bottom-left-radius: 0.25rem;
+}
+
+.sender-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: rgb(134, 239, 172);
+}
+
+.message-content {
+  font-size: 1rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.message-time {
+  font-size: 0.625rem;
+  text-align: right;
+  margin-top: 0.25rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ALT BAR - KESİNLİKLE SABIT */
+.input-area {
+  flex-shrink: 0;
+  padding: 1rem;
+  background: rgba(31, 41, 55, 0.8);
+  border-top: 1px solid rgba(168, 85, 247, 0.3);
+  z-index: 1000;
+}
+
+.message-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.message-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 9999px;
+  background: rgb(31, 41, 55);
+  color: white;
+  border: 1px solid rgb(75, 85, 99);
+  outline: none;
+  font-size: 1rem;
+}
+
+.message-input:focus {
+  border-color: rgb(168, 85, 247);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+}
+
+.send-btn {
+  padding: 0.75rem;
+  border-radius: 9999px;
+  background: rgb(147, 51, 234);
+  color: white;
+  border: none;
+  transition: background-color 0.2s;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: rgb(126, 34, 206);
+}
+
+.send-btn:disabled {
+  background: rgb(107, 114, 128);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* MOBILE OPTIMIZASYONU */
 @media (max-width: 768px) {
-  .bg-black\/40 {
+  .chat-container {
     border-radius: 0;
-    border: none;
   }
   
-  /* Mobile için viewport optimizasyonu */
-  .h-screen {
-    height: 100vh;
-    height: 100dvh; /* Dynamic viewport height */
+  .chat-header {
+    padding: 0.75rem;
+    min-height: 56px;
+  }
+  
+  .messages-area {
+    padding: 0.75rem;
+  }
+  
+  .input-area {
+    padding: 0.75rem;
+  }
+  
+  .message-bubble {
+    max-width: 85%;
+  }
+  
+  /* BUTONLAR MOBILE'DE DAHA KÜÇÜK */
+  .permission-btn, .logout-btn {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  
+  .chat-title {
+    font-size: 1.125rem;
+  }
+  
+  .message-input {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
   }
 }
 
-/* KESİN SABIT LAYOUT */
-.flex-col {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+/* PWA SAFE AREA DESTEĞİ */
+@media (display-mode: standalone) {
+  .chat-container {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
-.shrink-0 {
-  flex-shrink: 0;
-}
-
-.flex-1 {
-  flex: 1;
-  min-height: 0; /* Scroll için kritik */
-}
-
-/* Sticky header ve footer için ek güvence */
-.sticky {
-  position: sticky;
+/* YÜKSEK ÇÖZÜNÜRLÜK EKRANLAR İÇİN */
+@media (min-width: 1200px) {
+  .chat-container {
+    max-width: 800px;
+    margin: 0 auto;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 12px;
+    top: 20px;
+    bottom: 20px;
+    height: calc(100dvh - 40px);
+  }
 }
 </style>
