@@ -5,7 +5,7 @@ import Auth from './components/Auth.vue'
 import Posts from './components/Posts.vue'
 import Chat from './components/Chat.vue'
 import MenuButton from './components/MenuButton.vue'
-import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft } from 'lucide-vue-next'
+import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft, Gift } from 'lucide-vue-next'
 import { supabase } from './supabaseClient.js'
 
 const activeView = ref('menu')
@@ -21,6 +21,11 @@ function navigateTo(viewName, filter = null) {
 function navigateToMenu() {
   activeView.value = 'menu'
   currentFilter.value = null
+}
+
+// Doğum günü countdown linklerini aç
+function openBirthdayCountdown(url) {
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 onMounted(() => {
@@ -100,12 +105,35 @@ onMounted(() => {
 
         <main class="animate-fade-in w-full flex-1 flex flex-col items-center justify-center">
           <div v-if="activeView === 'menu'" class="grid grid-cols-3 gap-4 max-w-sm mx-auto">
+            <!-- MEVCUT MENÜ BUTONLARI -->
             <MenuButton @click="navigateTo('posts', null)" label="Tüm Akış"><Home :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'text')" label="Notlar"><BookText :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'image')" label="Fotoğraflar"><ImageIcon :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'video')" label="Videolar"><Film :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'audio')" label="Sesler"><Music :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('chat')" label="Anlık Sohbet"><MessageSquare :size="36" class="text-white/80" /></MenuButton>
+            
+            <!-- YENİ: DOĞUM GÜNÜ COUNTDOWN BUTONLARI -->
+            <MenuButton 
+              @click="openBirthdayCountdown('https://www.timeanddate.com/countdown/birthday?iso=20251129T19&p0=107&msg=Ezel+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
+              label="Ezel"
+            >
+              <Gift :size="36" class="text-pink-400" />
+            </MenuButton>
+            
+            <MenuButton 
+              @click="openBirthdayCountdown('https://www.timeanddate.com/countdown/birthday?iso=20251119T17&p0=107&msg=Melik+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
+              label="Melik"
+            >
+              <Gift :size="36" class="text-blue-400" />
+            </MenuButton>
+            
+            <MenuButton 
+              @click="openBirthdayCountdown('https://www.timeanddate.com/countdown/birthday?iso=20260731T17&p0=805&msg=Nihal+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
+              label="Nihal"
+            >
+              <Gift :size="36" class="text-green-400" />
+            </MenuButton>
           </div>
 
           <div v-else class="w-full h-full flex flex-col">
