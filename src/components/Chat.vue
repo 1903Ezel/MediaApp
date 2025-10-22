@@ -1,9 +1,17 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
-import { Send, LogOut, MessageSquare, Bell, ArrowLeft, Menu } from "lucide-vue-next"; // YENİ: ArrowLeft ve Menu eklendi
+import { Send, LogOut, MessageSquare, Bell, ArrowLeft } from "lucide-vue-next";
 import { session } from '../store.js'; 
 import notificationService from '../services/notificationService.js'; 
+
+// App.vue'den gelen prop'u tanımla
+const props = defineProps({
+  onBack: {
+    type: Function,
+    default: () => {}
+  }
+});
 
 const loading = ref(true);
 const messages = ref([]);
@@ -11,7 +19,20 @@ const newMessage = ref("");
 const chatContainer = ref(null);
 const subscription = ref(null); 
 
-// Mesajları yeni 'messages' tablosundan alıyoruz
+// ANA MENÜYE DÖNME FONKSİYONU - App.vue'deki navigateToMenu'yu çağır
+function goToMainMenu() {
+  console.log('🔙 Ana menüye dönülüyor...');
+  
+  // App.vue'den gelen onBack fonksiyonunu çağır
+  if (props.onBack) {
+    props.onBack();
+  } else {
+    // Fallback: tarayıcı geri git
+    window.history.back();
+  }
+}
+
+// MESAJ FONKSİYONLARI
 async function fetchMessages() {
   try {
     loading.value = true;
@@ -44,7 +65,6 @@ function scrollToBottom() {
   });
 }
 
-// Profilin varlığını kontrol eden ve yoksa oluşturan fonksiyon
 async function ensureProfile(user) {
   try {
     const { data: existing } = await supabase
@@ -94,13 +114,6 @@ async function handleLogout() {
     await supabase.auth.signOut();
 }
 
-// Ana menüye dönme fonksiyonu
-function goToMainMenu() {
-  // Ana menüye yönlendirme - router kullanıyorsanız router.push('/') yapabilirsiniz
-  window.history.back(); // veya istediğiniz yönlendirme
-}
-
-// İZİN VER butonu fonksiyonu
 async function requestPermission() {
   if (!session.value?.user) {
     alert('❌ Önce giriş yapmalısınız!');
@@ -110,13 +123,11 @@ async function requestPermission() {
   try {
     console.log('🔔 Bildirim izni isteniyor...');
     
-    // Push izni iste
     const result = await notificationService.requestPermission(session.value.user.id);
     
     if (result) {
       alert('✅ Bildirim izni başarılı!');
       
-      // Abonelikleri kontrol et
       const { data: subs } = await supabase
         .from('push_subscriptions')
         .select('*')
@@ -139,7 +150,6 @@ async function requestPermission() {
   }
 }
 
-// Otomatik push aboneliği fonksiyonu
 async function initializePushSubscription(user) {
   if (!user) return;
   
@@ -222,7 +232,7 @@ onMounted(async () => {
     <div class="chat-header">
       <!-- SOL TARAF: Geri butonu + Kullanıcı bilgisi -->
       <div class="header-left">
-        <button @click="goToMainMenu" class="back-btn">
+        <button @click="goToMainMenu" class="back-btn" title="Ana menüye dön">
           <ArrowLeft :size="24" class="text-white" />
         </button>
         <div class="user-info">
@@ -236,6 +246,7 @@ onMounted(async () => {
         <button 
           @click="requestPermission" 
           class="permission-btn"
+          title="Bildirim izni ver"
         >
           <Bell :size="18" />
           <span class="btn-text">İzin ver</span>
@@ -244,6 +255,7 @@ onMounted(async () => {
           v-if="session?.user" 
           @click="handleLogout" 
           class="logout-btn"
+          title="Çıkış yap"
         >
           <LogOut :size="18" />
         </button>
@@ -430,7 +442,7 @@ onMounted(async () => {
   min-height: 0;
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
-  background: transparent; /* BEYAZ BOŞLUK SORUNU ÇÖZÜMÜ */
+  background: transparent;
 }
 
 /* SCROLLBAR STILI */
