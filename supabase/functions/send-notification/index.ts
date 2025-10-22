@@ -1,105 +1,140 @@
 // supabase/functions/send-notification/index.ts
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-// 🚨🚨 CRITICAL: Supabase Secrets (Ortam Değişkenleri) olarak ayarlanmış değerler
-// Bu değişkenler Supabase Dashboard -> Edge Functions -> Variables kısmından ayarlanmalıdır.
+console.log("🚀 send-notification function başlatıldı");
+
 const ONE_SIGNAL_APP_ID = Deno.env.get("VITE_ONESIGNAL_APP_ID");
 const ONE_SIGNAL_REST_API_KEY = Deno.env.get("VITE_ONESIGNAL_REST_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY"); // YENİ: Anon Key environment variable
 
-if (!ONE_SIGNAL_APP_ID || !ONE_SIGNAL_REST_API_KEY) {
-    throw new Error("OneSignal API anahtarları Edge Function ortam değişkenlerinde ayarlanmadı.");
-}
+console.log("🔑 Environment Variables:", {
+  hasAppId: !!ONE_SIGNAL_APP_ID,
+  hasApiKey: !!ONE_SIGNAL_REST_API_KEY,
+  hasSupabaseUrl: !!SUPABASE_URL,
+  hasAnonKey: !!SUPABASE_ANON_KEY
+});
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 serve(async (req) => {
+  console.log("📨 Yeni istek geldi:", req.method);
+
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
-    const { sender_id, message_content, sender_username } = await req.json();
+    const requestBody = await req.json();
+    console.log("📦 Request Body:", requestBody);
+
+    // YENİ FORMAT parametreleri
+    const { sender_id, message_content, sender_username } = requestBody;
 
     if (!sender_id) {
-        return new Response(JSON.stringify({ error: "Sender ID eksik." }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-        });
+      console.error("❌ Sender ID eksik");
+      return new Response(JSON.stringify({ error: "Sender ID eksik." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Supabase'den sadece bu kullanıcıya ait push aboneliklerini getir
-    const supabaseAnonKey = req.headers.get('Authorization')?.replace('Bearer ', '');
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    
-    if (!supabaseAnonKey || !supabaseUrl) {
-        throw new Error("Supabase URL veya Anon Key (Authorization) eksik.");
+    // YENİ: Environment variable'dan anon key al
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
+    console.log("🔐 Anon Key kullanılıyor:", !!supabaseAnonKey);
+
+    if (!supabaseAnonKey || !SUPABASE_URL) {
+      console.error("❌ Supabase bilgileri eksik");
+      throw new Error("Supabase URL veya Anon Key eksik.");
     }
 
-    // NOTE: Edge Function içinde Supabase'e erişmek için fetch kullanıyoruz
-    const { data: subscriptions, error } = await fetch(`${supabaseUrl}/rest/v1/push_subscriptions?select=subscription&user_id=neq.${sender_id}`, {
+    // Supabase'den abonelikleri getir
+    console.log("🔍 Abonelikler getiriliyor...");
+    const subscriptionsResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/push_subscriptions?select=subscription&user_id=neq.${sender_id}`, 
+      {
         method: 'GET',
         headers: {
-            'apikey': supabaseAnonKey,
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
         }
-    }).then(res => res.json());
+      }
+    );
 
-    if (error) throw error;
-
-    const playerIds = subscriptions.map(s => s.subscription);
-
-    if (playerIds.length === 0) {
-        return new Response(JSON.stringify({ message: "Hedef abone bulunamadı." }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-        });
+    if (!subscriptionsResponse.ok) {
+      const errorText = await subscriptionsResponse.text();
+      console.error("❌ Supabase abonelik hatası:", errorText);
+      throw new Error(`Supabase error: ${subscriptionsResponse.status}`);
     }
 
-    // YENİ FORMAT: Kullanıcı adı + mesaj içeriği
+    const subscriptions = await subscriptionsResponse.json();
+    console.log("📋 Bulunan abonelikler:", subscriptions?.length || 0);
+
+    const playerIds = subscriptions?.map(s => s.subscription) || [];
+
+    if (playerIds.length === 0) {
+      console.log("ℹ️ Hedef abone bulunamadı");
+      return new Response(JSON.stringify({ message: "Hedef abone bulunamadı." }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // OneSignal bildirimi - YENİ FORMAT
     const notificationTitle = sender_username || "Yeni Mesaj";
     const notificationBody = message_content || "Yeni bir mesajınız var";
 
-    // OneSignal Bildirim Gönderme Yapılandırması
+    console.log("📢 OneSignal bildirimi:", {
+      title: notificationTitle,
+      body: notificationBody,
+      playerCount: playerIds.length
+    });
+
     const notification = {
-        app_id: ONE_SIGNAL_APP_ID,
-        include_player_ids: playerIds, 
-        contents: {
-            en: notificationBody,
-            tr: notificationBody,
-        },
-        headings: {
-            en: notificationTitle,
-            tr: notificationTitle,
-        },
-        url: "/", // Ana sayfaya yönlendir
-        data: {
-            sender_id: sender_id,
-            type: "new_message"
-        }
+      app_id: ONE_SIGNAL_APP_ID,
+      include_player_ids: playerIds,
+      contents: { en: notificationBody, tr: notificationBody },
+      headings: { en: notificationTitle, tr: notificationTitle },
+      url: "/",
+      data: { sender_id: sender_id, type: "new_message" }
     };
 
-    // OneSignal API'ye POST isteği
     const oneSignalResponse = await fetch("https://onesignal.com/api/v1/notifications", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Basic ${ONE_SIGNAL_REST_API_KEY}`,
-        },
-        body: JSON.stringify(notification),
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Basic ${ONE_SIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify(notification),
     });
 
     const result = await oneSignalResponse.json();
+    console.log("✅ OneSignal yanıtı:", result);
 
     if (!oneSignalResponse.ok) {
-        console.error("OneSignal API hatası:", result);
-        throw new Error(`OneSignal API hatası: ${result.errors?.join(', ')}`);
+      console.error("❌ OneSignal API hatası:", result);
+      throw new Error(`OneSignal API hatası: ${result.errors?.join(', ')}`);
     }
 
-    return new Response(JSON.stringify({ message: "Bildirim başarıyla gönderildi", result }), {
+    return new Response(JSON.stringify({ 
+      message: "Bildirim başarıyla gönderildi"
+    }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error) {
-    console.error("Edge Function hatası:", error.message);
-    return new Response(JSON.stringify({ error: `Edge Function hatası: ${error.message}` }), {
+    console.error("💥 Edge Function hatası:", error);
+    return new Response(JSON.stringify({ 
+      error: `Edge Function hatası: ${error.message}`
+    }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
