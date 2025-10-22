@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
-import { Send, LogOut, MessageSquare, Bell } from "lucide-vue-next";
+import { Send, LogOut, MessageSquare, Bell, ArrowLeft, Menu } from "lucide-vue-next"; // YENİ: ArrowLeft ve Menu eklendi
 import { session } from '../store.js'; 
 import notificationService from '../services/notificationService.js'; 
 
@@ -92,6 +92,12 @@ async function addMessage() {
 
 async function handleLogout() {
     await supabase.auth.signOut();
+}
+
+// Ana menüye dönme fonksiyonu
+function goToMainMenu() {
+  // Ana menüye yönlendirme - router kullanıyorsanız router.push('/') yapabilirsiniz
+  window.history.back(); // veya istediğiniz yönlendirme
 }
 
 // İZİN VER butonu fonksiyonu
@@ -212,18 +218,26 @@ onMounted(async () => {
   <!-- KESİN SABIT LAYOUT -->
   <div class="chat-container">
     
-    <!-- SABIT ÜST BAR - WhatsApp gibi -->
+    <!-- SABIT ÜST BAR - WhatsApp gibi TAM -->
     <div class="chat-header">
+      <!-- SOL TARAF: Geri butonu + Kullanıcı bilgisi -->
       <div class="header-left">
-        <MessageSquare :size="24" class="text-purple-400" />
-        <h2 class="chat-title">sohbet</h2>
+        <button @click="goToMainMenu" class="back-btn">
+          <ArrowLeft :size="24" class="text-white" />
+        </button>
+        <div class="user-info">
+          <div class="user-name">sohbet</div>
+          <div v-if="session?.user" class="user-email">{{ session.user.email }}</div>
+        </div>
       </div>
+
+      <!-- SAĞ TARAF: Butonlar -->
       <div class="header-buttons">
         <button 
           @click="requestPermission" 
           class="permission-btn"
         >
-          <Bell :size="16" />
+          <Bell :size="18" />
           <span class="btn-text">İzin ver</span>
         </button>
         <button 
@@ -232,7 +246,6 @@ onMounted(async () => {
           class="logout-btn"
         >
           <LogOut :size="18" />
-          <span class="btn-text">Çıkış</span>
         </button>
       </div>
     </div>
@@ -306,32 +319,64 @@ onMounted(async () => {
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(8px);
   overflow: hidden;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-/* ÜST BAR - KESİNLİKLE SABIT */
+/* ÜST BAR - KESİNLİKLE SABIT - WhatsApp gibi */
 .chat-header {
   flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
-  background: rgba(31, 41, 55, 0.8);
+  padding: 0.5rem 1rem;
+  background: rgba(31, 41, 55, 0.95);
   border-bottom: 1px solid rgba(168, 85, 247, 0.3);
-  min-height: 60px;
+  min-height: 64px;
   z-index: 1000;
+  box-sizing: border-box;
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex: 1;
 }
 
-.chat-title {
-  font-size: 1.25rem;
+.back-btn {
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-size: 1.125rem;
   font-weight: bold;
   color: white;
-  margin: 0;
+  line-height: 1.2;
+}
+
+.user-email {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.2;
 }
 
 .header-buttons {
@@ -343,12 +388,12 @@ onMounted(async () => {
 .permission-btn, .logout-btn {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.375rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
   font-size: 0.875rem;
   transition: all 0.2s;
-  white-space: nowrap; /* BUTON METNİ TEK SATIR */
+  white-space: nowrap;
   border: none;
   cursor: pointer;
 }
@@ -365,6 +410,7 @@ onMounted(async () => {
 .logout-btn {
   background: transparent;
   color: rgb(248, 113, 113);
+  padding: 0.5rem;
 }
 
 .logout-btn:hover {
@@ -373,7 +419,7 @@ onMounted(async () => {
 }
 
 .btn-text {
-  white-space: nowrap; /* METİN KESİNLİKLE TEK SATIR */
+  white-space: nowrap;
 }
 
 /* MESAJ ALANI - SADECE BURASI SCROLL */
@@ -383,6 +429,8 @@ onMounted(async () => {
   padding: 1rem;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  background: transparent; /* BEYAZ BOŞLUK SORUNU ÇÖZÜMÜ */
 }
 
 /* SCROLLBAR STILI */
@@ -459,9 +507,10 @@ onMounted(async () => {
 .input-area {
   flex-shrink: 0;
   padding: 1rem;
-  background: rgba(31, 41, 55, 0.8);
+  background: rgba(31, 41, 55, 0.95);
   border-top: 1px solid rgba(168, 85, 247, 0.3);
   z-index: 1000;
+  box-sizing: border-box;
 }
 
 .message-form {
@@ -479,6 +528,7 @@ onMounted(async () => {
   border: 1px solid rgb(75, 85, 99);
   outline: none;
   font-size: 1rem;
+  box-sizing: border-box;
 }
 
 .message-input:focus {
@@ -497,6 +547,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -516,7 +567,7 @@ onMounted(async () => {
   }
   
   .chat-header {
-    padding: 0.75rem;
+    padding: 0.5rem 0.75rem;
     min-height: 56px;
   }
   
@@ -532,14 +583,17 @@ onMounted(async () => {
     max-width: 85%;
   }
   
-  /* BUTONLAR MOBILE'DE DAHA KÜÇÜK */
-  .permission-btn, .logout-btn {
-    padding: 0.375rem 0.5rem;
-    font-size: 0.75rem;
+  .user-name {
+    font-size: 1rem;
   }
   
-  .chat-title {
-    font-size: 1.125rem;
+  .user-email {
+    font-size: 0.7rem;
+  }
+  
+  .permission-btn {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
   }
   
   .message-input {
@@ -553,20 +607,6 @@ onMounted(async () => {
   .chat-container {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
-  }
-}
-
-/* YÜKSEK ÇÖZÜNÜRLÜK EKRANLAR İÇİN */
-@media (min-width: 1200px) {
-  .chat-container {
-    max-width: 800px;
-    margin: 0 auto;
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: 12px;
-    top: 20px;
-    bottom: 20px;
-    height: calc(100dvh - 40px);
   }
 }
 </style>
