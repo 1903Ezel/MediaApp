@@ -37,8 +37,8 @@ class NotificationService {
       const currentPermission = await OneSignal.Notifications.permission;
       console.log("📋 Mevcut izin durumu:", currentPermission);
 
-      // DÜZELTME: İzin TRUE ise devam et
-      if (currentPermission === 'granted') {
+      // DÜZELTME: Boolean kontrolü - "granted" yerine true
+      if (currentPermission === true) {
         console.log("✅ Zaten izin verilmiş, abonelik oluşturuluyor...");
         const success = await this.saveUserSubscription(userId, OneSignal);
         return success;
@@ -49,8 +49,8 @@ class NotificationService {
       const newPermission = await OneSignal.Notifications.requestPermission();
       console.log("📋 Yeni izin sonucu:", newPermission);
 
-      // DÜZELTME: Bu satır kritik - permission kontrolü
-      if (newPermission === 'granted') {
+      // DÜZELTME: Boolean kontrolü - "granted" yerine true
+      if (newPermission === true) {
         console.log("✅ Yeni bildirim izni verildi!");
         const success = await this.saveUserSubscription(userId, OneSignal);
         return success;
@@ -120,4 +120,3 @@ class NotificationService {
 }
 
 export default new NotificationService();
-//test
