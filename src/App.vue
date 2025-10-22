@@ -4,16 +4,16 @@ import { supabase } from './supabaseClient';
 import { session } from './store'; // Global store'dan session alınıyor
 import Chat from './components/Chat.vue';
 import Posts from './components/Posts.vue';
+import MenuButton from './components/MenuButton.vue'; // ✅ MenuButton geri eklendi ve sorun çözülmeli
 
 // Yeni ikonları içe aktarıyoruz
 import { 
   LogOut, ArrowLeft, Home, BookText, ImageIcon, Film, Music, MessageSquare, 
-  Gift, PartyPopper 
+  Gift, PartyPopper // Yeni doğum günü ikonları
 } from "lucide-vue-next"; 
-import MenuButton from './components/MenuButton.vue'; // MenuButton'ı içe aktardığınızı varsayıyorum.
 
 // Mevcut state'ler
-const activeView = ref('menu'); // 'menu', 'chat', 'posts', 'ezel', 'melik', 'nihal'
+const activeView = ref('menu'); 
 const currentFilter = ref(null);
 
 // Mevcut fonksiyonlar
@@ -30,7 +30,7 @@ async function handleLogout() {
   await supabase.auth.signOut();
 }
 
-// 👇 YENİ EKLEDİĞİMİZ FONKSİYON: Harici URL'yi yeni sekmede açar
+// Harici URL'yi yeni sekmede açan fonksiyon
 function openUrl(url) {
   window.open(url, '_blank');
 }
@@ -78,7 +78,7 @@ onMounted(() => {
             <MenuButton @click="navigateTo('posts', 'audio')" label="Sesler"><Music :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('chat')" label="Anlık Sohbet"><MessageSquare :size="36" class="text-white/80" /></MenuButton>
             
-            <!-- 👇 YENİ EKLENEN 3 DOĞUM GÜNÜ BUTONU (Kırmızı işaretli alan) -->
+            <!-- 👇 YENİ EKLENEN 3 DOĞUM GÜNÜ BUTONU -->
             <MenuButton 
               @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20251129T19&p0=107&msg=Ezel+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
               label="Ezel Doğumgünü"
