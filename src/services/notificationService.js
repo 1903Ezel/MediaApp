@@ -3,24 +3,19 @@ import { supabase } from '../supabaseClient.js'
 
 class NotificationService {
 
-  // OneSignal'i doğru şekilde bekleyen fonksiyon
   async waitForOneSignal() {
     return new Promise((resolve, reject) => {
-      // OneSignal zaten yüklü mü?
       if (window.OneSignal && window.OneSignal.Notifications) {
         console.log("✅ OneSignal zaten hazır");
         return resolve(window.OneSignal);
       }
 
-      // OneSignalDeferred kontrolü
       if (!window.OneSignalDeferred) {
-        console.error("❌ OneSignalDeferred bulunamadı. SDK yüklenmemiş.");
+        console.error("❌ OneSignalDeferred bulunamadı");
         return reject(new Error("OneSignal SDK not loaded"));
       }
 
       let resolved = false;
-      
-      // Timeout ekle (10 saniye)
       const timeout = setTimeout(() => {
         if (!resolved) {
           console.error("❌ OneSignal yüklenme timeout");
@@ -28,7 +23,6 @@ class NotificationService {
         }
       }, 10000);
 
-      // OneSignalDeferred'a callback ekle
       window.OneSignalDeferred.push(async (OneSignal) => {
         if (!resolved) {
           resolved = true;
@@ -42,27 +36,19 @@ class NotificationService {
 
   async requestPermission(userId) {
     if (!userId) {
-        console.warn("⚠️ Kullanıcı ID'si olmadan bildirim izni istenemez.");
-        return false;
+      console.warn("⚠️ Kullanıcı ID'si yok");
+      return false;
     }
     
     try {
       console.log("🔔 OneSignal bekleniyor...");
       const OneSignal = await this.waitForOneSignal();
-      console.log("✅ OneSignal alındı");
-
-      if (!OneSignal) {
-        console.error("❌ OneSignal alınamadı");
-        return false;
-      }
-
-      console.log("🔔 OneSignal izin kontrolü...");
       
-      // İzin durumunu kontrol et
+      console.log("🔔 OneSignal izin kontrolü...");
       const currentPermission = await OneSignal.Notifications.permission;
       console.log("📋 Mevcut izin durumu:", currentPermission);
 
-      // DÜZELTME: Eğer zaten izin verilmişse
+      // DÜZELTME: İzin TRUE ise devam et
       if (currentPermission === 'granted') {
         console.log("✅ Zaten izin verilmiş, abonelik oluşturuluyor...");
         const success = await this.saveUserSubscription(userId, OneSignal);
@@ -74,7 +60,7 @@ class NotificationService {
       const newPermission = await OneSignal.Notifications.requestPermission();
       console.log("📋 Yeni izin sonucu:", newPermission);
 
-      // DÜZELTME: Bu satırı değiştirdim - permission kontrolü
+      // DÜZELTME: Bu satır kritik - permission kontrolü
       if (newPermission === 'granted') {
         console.log("✅ Yeni bildirim izni verildi!");
         const success = await this.saveUserSubscription(userId, OneSignal);
@@ -90,33 +76,22 @@ class NotificationService {
     }
   }
 
-  // User subscription'ı kaydetmek için ayrı fonksiyon
   async saveUserSubscription(userId, OneSignal) {
     try {
       console.log("📱 Player ID alınıyor...");
       
-      // Player ID'yi al
-      const pushSubscription = await OneSignal.User.PushSubscription;
-      const playerId = await pushSubscription.getId();
+      // DÜZELTME: Yeni OneSignal API
+      const pushSubscription = OneSignal.User.PushSubscription;
+      const playerId = pushSubscription.id; // .getId() DEĞİL, .id
       
       console.log("📱 OneSignal Player ID:", playerId);
 
       if (!playerId) {
-        console.warn("⚠️ Player ID alınamadı, 3 saniye bekleniyor...");
-        // 3 saniye bekle ve tekrar dene
-        await new Promise(r => setTimeout(r, 3000));
-        const retryPlayerId = await pushSubscription.getId();
-        
-        if (!retryPlayerId) {
-          console.error("❌ Player ID hala alınamadı");
-          return false;
-        }
-        
-        console.log("📱 Player ID (retry):", retryPlayerId);
-        await this.saveSubscription(userId, retryPlayerId, 'web');
-        return true;
+        console.warn("⚠️ Player ID alınamadı");
+        return false;
       }
 
+      // Database'e kaydet
       await this.saveSubscription(userId, playerId, 'web');
       return true;
 
@@ -133,9 +108,9 @@ class NotificationService {
       language: navigator.language,
     };
 
-    console.log("💾 Supabase'e kaydediliyor:", { userId, playerId });
+    console.log("💾 Supabase'e kaydediliyor:", playerId);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('push_subscriptions') 
       .upsert({
         user_id: userId,
