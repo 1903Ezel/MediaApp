@@ -1,10 +1,10 @@
-// src/services/notificationService.js - TAM DÜZELTMİŞ
+// src/services/notificationService.js - KESİN ÇÖZÜM
 import { supabase } from '../supabaseClient.js' 
 
 class NotificationService {
 
   async waitForOneSignal() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (window.OneSignal && window.OneSignal.Notifications) {
         console.log("✅ OneSignal zaten hazır");
         return resolve(window.OneSignal);
@@ -12,24 +12,12 @@ class NotificationService {
 
       if (!window.OneSignalDeferred) {
         console.error("❌ OneSignalDeferred bulunamadı");
-        return reject(new Error("OneSignal SDK not loaded"));
+        return resolve(null);
       }
 
-      let resolved = false;
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          console.error("❌ OneSignal yüklenme timeout");
-          reject(new Error("OneSignal load timeout"));
-        }
-      }, 10000);
-
       window.OneSignalDeferred.push(async (OneSignal) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          console.log("✅ OneSignal hazır");
-          resolve(OneSignal);
-        }
+        console.log("✅ OneSignal hazır");
+        resolve(OneSignal);
       });
     });
   }
@@ -43,7 +31,8 @@ class NotificationService {
     try {
       console.log("🔔 OneSignal bekleniyor...");
       const OneSignal = await this.waitForOneSignal();
-      
+      if (!OneSignal) return false;
+
       console.log("🔔 OneSignal izin kontrolü...");
       const currentPermission = await OneSignal.Notifications.permission;
       console.log("📋 Mevcut izin durumu:", currentPermission);
@@ -81,9 +70,7 @@ class NotificationService {
       console.log("📱 Player ID alınıyor...");
       
       // DÜZELTME: Yeni OneSignal API
-      const pushSubscription = OneSignal.User.PushSubscription;
-      const playerId = pushSubscription.id; // .getId() DEĞİL, .id
-      
+      const playerId = OneSignal.User.PushSubscription.id;
       console.log("📱 OneSignal Player ID:", playerId);
 
       if (!playerId) {
@@ -124,7 +111,7 @@ class NotificationService {
 
     if (error) {
       console.error("❌ Supabase kayıt hatası:", error);
-      throw error;
+      return false;
     }
 
     console.log("✅ Supabase'e başarıyla kaydedildi:", playerId);
