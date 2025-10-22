@@ -1,624 +1,144 @@
 <script setup>
-import { ref, onMounted, watch, nextTick } from "vue";
-import { supabase } from "../supabaseClient.js"; 
-import { Send, LogOut, MessageSquare, Bell, ArrowLeft } from "lucide-vue-next";
-import { session } from '../store.js'; 
-import notificationService from '../services/notificationService.js'; 
+import { ref, onMounted, watchEffect } from 'vue'
+import { session } from './store.js'
+import Auth from './components/Auth.vue'
+import Posts from './components/Posts.vue'
+import Chat from './components/Chat.vue'
+import MenuButton from './components/MenuButton.vue'
+import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft } from 'lucide-vue-next'
+import { supabase } from './supabaseClient.js'
 
-// App.vue'den gelen prop'u tanımla
-const props = defineProps({
-  onBack: {
-    type: Function,
-    default: () => {}
-  }
-});
+const activeView = ref('menu')
+const currentFilter = ref(null)
+const notificationsEnabled = ref(false)
+const userLoaded = ref(false)
 
-const loading = ref(true);
-const messages = ref([]);
-const newMessage = ref("");
-const chatContainer = ref(null);
-const subscription = ref(null); 
-
-// ANA MENÜYE DÖNME FONKSİYONU - App.vue'deki navigateToMenu'yu çağır
-function goToMainMenu() {
-  console.log('🔙 Ana menüye dönülüyor...');
-  
-  // App.vue'den gelen onBack fonksiyonunu çağır
-  if (props.onBack) {
-    props.onBack();
-  } else {
-    // Fallback: tarayıcı geri git
-    window.history.back();
-  }
+function navigateTo(viewName, filter = null) {
+  currentFilter.value = filter
+  activeView.value = viewName
 }
 
-// MESAJ FONKSİYONLARI
-async function fetchMessages() {
-  try {
-    loading.value = true;
-    const { data, error } = await supabase
-      .from("messages") 
-      .select(`
-        id, 
-        content, 
-        created_at, 
-        sender_id,
-        sender:profiles!messages_sender_id_fkey(id, username)
-      `)
-      .order("created_at", { ascending: true });
-
-    if (error) throw error;
-    messages.value = data || [];
-  } catch (error) {
-    console.error("❌ Mesajlar alınırken hata:", error.message);
-  } finally {
-    loading.value = false;
-    scrollToBottom();
-  }
+function navigateToMenu() {
+  activeView.value = 'menu'
+  currentFilter.value = null
 }
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+onMounted(() => {
+  // Kullanıcı oturumu değiştikçe kontrol et
+  watchEffect(() => {
+    if (session.value && session.value.user) {
+      userLoaded.value = true
     }
-  });
-}
+  })
 
-async function ensureProfile(user) {
-  try {
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", user.id)
-      .single();
+  // OneSignal izin durumunu kontrol et (otomatik mod)
+  if (window.OneSignalDeferred) {
+    window.OneSignalDeferred.push(async function (OneSignal) {
+      try {
+        const permission = await OneSignal.Notifications.permission
+        notificationsEnabled.value = (permission === "granted")
 
-    if (!existing) {
-      await supabase.from("profiles").insert({
-        id: user.id,
-        username: user.email ? user.email.split("@")[0] : `user_${user.id.substring(0, 8)}`, 
-      });
-    }
-  } catch (err) {
-    console.error("⚠️ Profil kontrolü hatası:", err.message);
-  }
-}
-
-async function addMessage() {
-  const content = newMessage.value.trim();
-  if (content === "") return;
-
-  const user = session.value?.user; 
-  if (!user) return alert("Giriş yapmalısınız.");
-
-  await ensureProfile(user); 
-  const temp = newMessage.value;
-  newMessage.value = ""; 
-
-  try {
-    const { error } = await supabase
-      .from("messages") 
-      .insert({
-        sender_id: user.id,
-        content,
-      });
-
-    if (error) throw error;
-  } catch (err) {
-    console.error("❌ Mesaj gönderme hatası:", err.message);
-    newMessage.value = temp; 
-  }
-}
-
-async function handleLogout() {
-    await supabase.auth.signOut();
-}
-
-async function requestPermission() {
-  if (!session.value?.user) {
-    alert('❌ Önce giriş yapmalısınız!');
-    return;
-  }
-  
-  try {
-    console.log('🔔 Bildirim izni isteniyor...');
-    
-    const result = await notificationService.requestPermission(session.value.user.id);
-    
-    if (result) {
-      alert('✅ Bildirim izni başarılı!');
-      
-      const { data: subs } = await supabase
-        .from('push_subscriptions')
-        .select('*')
-        .eq('user_id', session.value.user.id);
-      
-      console.log('📋 Aboneliklerim:', subs);
-      
-      if (subs && subs.length > 0) {
-        alert(`📱 ${subs.length} adet aboneliğiniz var!`);
-      } else {
-        alert('⚠️ Abonelik oluşmadı!');
+        // Oturum varsa kullanıcıyı OneSignal ile eşleştir
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await OneSignal.User.PushSubscription.setExternalId(user.id)
+          console.log("✅ OneSignal eşleştirildi:", user.id)
+        }
+      } catch (err) {
+        console.warn("OneSignal başlatılırken hata:", err)
       }
-    } else {
-      alert('❌ Bildirim izni alınamadı!');
-    }
-    
-  } catch (error) {
-    console.error('💥 İzin hatası:', error);
-    alert('❌ Hata: ' + error.message);
+    })
   }
-}
-
-async function initializePushSubscription(user) {
-  if (!user) return;
-  
-  console.log('👤 Kullanıcı tespit edildi, push aboneliği başlatılıyor...');
-  
-  setTimeout(async () => {
-    try {
-      console.log('🔔 Push aboneliği deneniyor...');
-      const success = await notificationService.requestPermission(user.id);
-      console.log('🎯 Push aboneliği sonucu:', success);
-      
-      if (success) {
-        const { data: subs } = await supabase
-          .from('push_subscriptions')
-          .select('*')
-          .eq('user_id', user.id);
-        console.log('📋 Mevcut aboneliklerim:', subs);
-      }
-    } catch (error) {
-      console.error('💥 Push aboneliği hatası:', error);
-    }
-  }, 3000);
-}
-
-onMounted(async () => {
-  await fetchMessages();
-
-  if (subscription.value) subscription.value.unsubscribe(); 
-
-  subscription.value = supabase
-    .channel("grup-chat")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "messages", 
-      },
-      async (payload) => {
-        const { data: senderData } = await supabase
-          .from("profiles")
-          .select("id, username")
-          .eq("id", payload.new.sender_id)
-          .single();
-        
-        const newMessage = {
-            ...payload.new,
-            sender: senderData,
-        };
-
-        messages.value.push(newMessage);
-        scrollToBottom();
-      }
-    )
-    .subscribe();
-
-  if (session.value?.user) {
-    initializePushSubscription(session.value.user);
-  }
-
-  watch(session, (newSession) => {
-    if (newSession?.user) {
-      initializePushSubscription(newSession.user);
-    }
-  });
-
-  watch(messages, scrollToBottom, { deep: true, flush: 'post' }); 
-
-  return () => {
-    if (subscription.value) subscription.value.unsubscribe();
-  };
-});
+})
 </script>
 
 <template>
-  <!-- KESİN SABIT LAYOUT -->
-  <div class="chat-container">
-    
-    <!-- SABIT ÜST BAR - WhatsApp gibi TAM -->
-    <div class="chat-header">
-      <!-- SOL TARAF: Geri butonu + Kullanıcı bilgisi -->
-      <div class="header-left">
-        <button @click="goToMainMenu" class="back-btn" title="Ana menüye dön">
-          <ArrowLeft :size="24" class="text-white" />
-        </button>
-        <div class="user-info">
-          <div class="user-name">sohbet</div>
-          <div v-if="session?.user" class="user-email">{{ session.user.email }}</div>
-        </div>
+  <div
+    class="relative min-h-screen w-full bg-gray-900 bg-fixed bg-cover bg-top"
+    style="background-image: url('/app_background.jpg');"
+  >
+    <div class="absolute inset-0 bg-black/60"></div>
+
+    <div class="relative z-10 min-h-screen w-full flex flex-col items-center py-4 sm:py-8">
+
+      <!-- 🚪 Giriş yapılmadıysa -->
+      <div v-if="!session || !session.user" class="flex items-center justify-center h-full">
+        <Auth />
       </div>
 
-      <!-- SAĞ TARAF: Butonlar -->
-      <div class="header-buttons">
-        <button 
-          @click="requestPermission" 
-          class="permission-btn"
-          title="Bildirim izni ver"
-        >
-          <Bell :size="18" />
-          <span class="btn-text">İzin ver</span>
-        </button>
-        <button 
-          v-if="session?.user" 
-          @click="handleLogout" 
-          class="logout-btn"
-          title="Çıkış yap"
-        >
-          <LogOut :size="18" />
-        </button>
-      </div>
-    </div>
-
-    <!-- SADECE BURASI SCROLL -->
-    <div ref="chatContainer" class="messages-area">
-      <div v-if="loading" class="loading-message">
-        Mesajlar yükleniyor...
-      </div>
-      <div v-else-if="messages.length === 0" class="empty-message">
-        Henüz mesaj yok. İlk mesajı sen gönder!
-      </div>
-
-      <div
-        v-for="m in messages"
-        :key="m.id"
-        class="message-wrapper"
-        :class="{ 'own-message': session?.user?.id === m.sender_id }"
-      >
-        <div
-          class="message-bubble"
-          :class="{
-            'own-bubble': session?.user?.id === m.sender_id,
-            'other-bubble': session?.user?.id !== m.sender_id,
-          }"
-        >
-          <div v-if="session?.user?.id !== m.sender_id" class="sender-name">
-            {{ m.sender?.username || "Anonim" }}
+      <!-- ✅ Giriş yapıldıysa -->
+      <div v-else class="w-full max-w-xl mx-auto flex flex-col h-full">
+        <header class="mb-8 flex justify-between items-center w-full px-4 sm:px-0">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-black/50 border border-purple-500/50 flex items-center justify-center shadow-lg">
+              <span class="text-white/50 text-xl font-bold">
+                {{ session.user.email ? session.user.email.charAt(0).toUpperCase() : '?' }}
+              </span>
+            </div>
+            <span class="text-white/80 font-semibold text-sm hidden sm:block">
+              {{ session.user.email || 'Yükleniyor...' }}
+            </span>
           </div>
-          <p class="message-content">{{ m.content }}</p>
-          <div class="message-time">
-            {{ new Date(m.created_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) }}
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- SABIT ALT BAR -->
-    <div class="input-area">
-      <form @submit.prevent="addMessage" class="message-form">
-        <input
-          v-model="newMessage"
-          type="text"
-          placeholder="Mesajınızı yazın..."
-          class="message-input"
-          required
-        />
-        <button
-          type="submit"
-          class="send-btn"
-          :disabled="newMessage.trim() === '' || !session?.user"
-        >
-          <Send :size="20" />
-        </button>
-      </form>
+          <div class="flex items-center gap-4">
+            <!-- Bildirim durumu göstergesi -->
+            <div
+              v-if="notificationsEnabled"
+              class="flex items-center gap-2 text-green-400 text-sm"
+            >
+              🔔 Bildirimler aktif
+            </div>
+            <button
+              @click="supabase.auth.signOut()"
+              class="flex items-center gap-2 text-sm bg-black/30 text-red-400 hover:text-red-500 p-2 rounded-lg"
+            >
+              <LogOut :size="16" />
+              <span class="hidden sm:inline">Çıkış Yap</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="animate-fade-in w-full flex-1 flex flex-col items-center justify-center">
+          <div v-if="activeView === 'menu'" class="grid grid-cols-3 gap-4 max-w-sm mx-auto">
+            <MenuButton @click="navigateTo('posts', null)" label="Tüm Akış"><Home :size="36" class="text-white/80" /></MenuButton>
+            <MenuButton @click="navigateTo('posts', 'text')" label="Notlar"><BookText :size="36" class="text-white/80" /></MenuButton>
+            <MenuButton @click="navigateTo('posts', 'image')" label="Fotoğraflar"><ImageIcon :size="36" class="text-white/80" /></MenuButton>
+            <MenuButton @click="navigateTo('posts', 'video')" label="Videolar"><Film :size="36" class="text-white/80" /></MenuButton>
+            <MenuButton @click="navigateTo('posts', 'audio')" label="Sesler"><Music :size="36" class="text-white/80" /></MenuButton>
+            <MenuButton @click="navigateTo('chat')" label="Anlık Sohbet"><MessageSquare :size="36" class="text-white/80" /></MenuButton>
+          </div>
+
+          <div v-else class="w-full h-full flex flex-col">
+            <button
+              @click="navigateToMenu"
+              class="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 mb-6 self-start"
+            >
+              <ArrowLeft :size="16" />
+              Ana Menüye Dön
+            </button>
+            <div class="flex-1">
+              <Chat v-if="activeView === 'chat'" :onBack="navigateToMenu" />
+              <Posts v-if="activeView === 'posts'" :filter="currentFilter" />
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   </div>
 </template>
 
-<style scoped>
-/* KESİN SABIT LAYOUT - TÜM CİHAZLAR İÇİN */
-.chat-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* ÜST BAR - KESİNLİKLE SABIT - WhatsApp gibi */
-.chat-header {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  background: rgba(31, 41, 55, 0.95);
-  border-bottom: 1px solid rgba(168, 85, 247, 0.3);
-  min-height: 64px;
-  z-index: 1000;
-  box-sizing: border-box;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex: 1;
-}
-
-.back-btn {
-  background: none;
-  border: none;
-  padding: 0.5rem;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.back-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.user-name {
-  font-size: 1.125rem;
-  font-weight: bold;
-  color: white;
-  line-height: 1.2;
-}
-
-.user-email {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.2;
-}
-
-.header-buttons {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.permission-btn, .logout-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  transition: all 0.2s;
-  white-space: nowrap;
-  border: none;
-  cursor: pointer;
-}
-
-.permission-btn {
-  background: rgb(22, 163, 74);
-  color: white;
-}
-
-.permission-btn:hover {
-  background: rgb(21, 128, 61);
-}
-
-.logout-btn {
-  background: transparent;
-  color: rgb(248, 113, 113);
-  padding: 0.5rem;
-}
-
-.logout-btn:hover {
-  color: rgb(239, 68, 68);
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.btn-text {
-  white-space: nowrap;
-}
-
-/* MESAJ ALANI - SADECE BURASI SCROLL */
-.messages-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1rem;
-  min-height: 0;
-  -webkit-overflow-scrolling: touch;
-  box-sizing: border-box;
-  background: transparent;
-}
-
-/* SCROLLBAR STILI */
-.messages-area::-webkit-scrollbar {
-  width: 6px;
-}
-
-.messages-area::-webkit-scrollbar-thumb {
-  background: rgba(168, 85, 247, 0.5);
-  border-radius: 3px;
-}
-
-.messages-area::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.7);
-}
-
-.loading-message, .empty-message {
-  color: rgba(255, 255, 255, 0.5);
-  text-align: center;
-  padding: 2rem 0;
-}
-
-/* MESAJ STILLERI */
-.message-wrapper {
-  display: flex;
-  margin-bottom: 1rem;
-}
-
-.own-message {
-  justify-content: flex-end;
-}
-
-.message-bubble {
-  max-width: 80%;
-  padding: 0.75rem;
-  border-radius: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  word-wrap: break-word;
-}
-
-.own-bubble {
-  background: rgb(147, 51, 234);
-  color: white;
-  border-bottom-right-radius: 0.25rem;
-}
-
-.other-bubble {
-  background: rgb(55, 65, 81);
-  color: white;
-  border-bottom-left-radius: 0.25rem;
-}
-
-.sender-name {
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-  color: rgb(134, 239, 172);
-}
-
-.message-content {
-  font-size: 1rem;
-  margin: 0;
-  line-height: 1.4;
-}
-
-.message-time {
-  font-size: 0.625rem;
-  text-align: right;
-  margin-top: 0.25rem;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* ALT BAR - KESİNLİKLE SABIT */
-.input-area {
-  flex-shrink: 0;
-  padding: 1rem;
-  background: rgba(31, 41, 55, 0.95);
-  border-top: 1px solid rgba(168, 85, 247, 0.3);
-  z-index: 1000;
-  box-sizing: border-box;
-}
-
-.message-form {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.message-input {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border-radius: 9999px;
-  background: rgb(31, 41, 55);
-  color: white;
-  border: 1px solid rgb(75, 85, 99);
-  outline: none;
-  font-size: 1rem;
-  box-sizing: border-box;
-}
-
-.message-input:focus {
-  border-color: rgb(168, 85, 247);
-  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
-}
-
-.send-btn {
-  padding: 0.75rem;
-  border-radius: 9999px;
-  background: rgb(147, 51, 234);
-  color: white;
-  border: none;
-  transition: background-color 0.2s;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: rgb(126, 34, 206);
-}
-
-.send-btn:disabled {
-  background: rgb(107, 114, 128);
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* MOBILE OPTIMIZASYONU */
-@media (max-width: 768px) {
-  .chat-container {
-    border-radius: 0;
+<style>
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  
-  .chat-header {
-    padding: 0.5rem 0.75rem;
-    min-height: 56px;
-  }
-  
-  .messages-area {
-    padding: 0.75rem;
-  }
-  
-  .input-area {
-    padding: 0.75rem;
-  }
-  
-  .message-bubble {
-    max-width: 85%;
-  }
-  
-  .user-name {
-    font-size: 1rem;
-  }
-  
-  .user-email {
-    font-size: 0.7rem;
-  }
-  
-  .permission-btn {
-    padding: 0.375rem 0.5rem;
-    font-size: 0.75rem;
-  }
-  
-  .message-input {
-    padding: 0.625rem 0.875rem;
-    font-size: 0.875rem;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
-
-/* PWA SAFE AREA DESTEĞİ */
-@media (display-mode: standalone) {
-  .chat-container {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
 }
 </style>
