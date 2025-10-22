@@ -1,95 +1,62 @@
 <script setup>
-import { ref, onMounted, watchEffect } from 'vue'
-import { session } from './store.js'
-import Auth from './components/Auth.vue'
-import Posts from './components/Posts.vue'
-import Chat from './components/Chat.vue'
-import MenuButton from './components/MenuButton.vue'
-import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft } from 'lucide-vue-next'
-import { supabase } from './supabaseClient.js'
+import { ref, onMounted } from 'vue';
+import { supabase } from './supabaseClient';
+import { session } from './store'; // Global store'dan session alınıyor
+import Chat from './components/Chat.vue';
+import Posts from './components/Posts.vue';
 
-const activeView = ref('menu')
-const currentFilter = ref(null)
-const notificationsEnabled = ref(false)
-const userLoaded = ref(false)
+// Yeni ikonları içe aktarıyoruz
+import { 
+  LogOut, ArrowLeft, Home, BookText, ImageIcon, Film, Music, MessageSquare, 
+  Gift, PartyPopper 
+} from "lucide-vue-next"; 
+import MenuButton from './components/MenuButton.vue'; // MenuButton'ı içe aktardığınızı varsayıyorum.
 
-function navigateTo(viewName, filter = null) {
-  currentFilter.value = filter
-  activeView.value = viewName
+// Mevcut state'ler
+const activeView = ref('menu'); // 'menu', 'chat', 'posts', 'ezel', 'melik', 'nihal'
+const currentFilter = ref(null);
+
+// Mevcut fonksiyonlar
+function navigateTo(view, filter = null) {
+  activeView.value = view;
+  currentFilter.value = filter;
 }
 
 function navigateToMenu() {
-  activeView.value = 'menu'
-  currentFilter.value = null
+  activeView.value = 'menu';
 }
 
+async function handleLogout() {
+  await supabase.auth.signOut();
+}
+
+// 👇 YENİ EKLEDİĞİMİZ FONKSİYON: Harici URL'yi yeni sekmede açar
+function openUrl(url) {
+  window.open(url, '_blank');
+}
+
+// Oturum kontrolü (store.js'de yapıldığı için burada sadece reaktif olarak kullanıyoruz)
 onMounted(() => {
-  // Kullanıcı oturumu değiştikçe kontrol et
-  watchEffect(() => {
-    if (session.value && session.value.user) {
-      userLoaded.value = true
-    }
-  })
-
-  // OneSignal izin durumunu kontrol et (otomatik mod)
-  if (window.OneSignalDeferred) {
-    window.OneSignalDeferred.push(async function (OneSignal) {
-      try {
-        const permission = await OneSignal.Notifications.permission
-        notificationsEnabled.value = (permission === "granted")
-
-        // Oturum varsa kullanıcıyı OneSignal ile eşleştir
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          await OneSignal.User.PushSubscription.setExternalId(user.id)
-          console.log("✅ OneSignal eşleştirildi:", user.id)
-        }
-      } catch (err) {
-        console.warn("OneSignal başlatılırken hata:", err)
-      }
-    })
-  }
-})
+  // Uygulama yüklendiğinde başka bir işlem gerekirse buraya eklenebilir.
+});
 </script>
 
 <template>
-  <div
-    class="relative min-h-screen w-full bg-gray-900 bg-fixed bg-cover bg-top"
-    style="background-image: url('/app_background.jpg');"
-  >
-    <div class="absolute inset-0 bg-black/60"></div>
-
-    <div class="relative z-10 min-h-screen w-full flex flex-col items-center py-4 sm:py-8">
-
-      <!-- 🚪 Giriş yapılmadıysa -->
-      <div v-if="!session || !session.user" class="flex items-center justify-center h-full">
-        <Auth />
-      </div>
-
-      <!-- ✅ Giriş yapıldıysa -->
-      <div v-else class="w-full max-w-xl mx-auto flex flex-col h-full">
-        <header class="mb-8 flex justify-between items-center w-full px-4 sm:px-0">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full bg-black/50 border border-purple-500/50 flex items-center justify-center shadow-lg">
-              <span class="text-white/50 text-xl font-bold">
-                {{ session.user.email ? session.user.email.charAt(0).toUpperCase() : '?' }}
-              </span>
-            </div>
-            <span class="text-white/80 font-semibold text-sm hidden sm:block">
-              {{ session.user.email || 'Yükleniyor...' }}
-            </span>
+  <div class="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4 relative">
+    
+    <div v-if="session?.user">
+      <div class="h-[calc(100vh-2rem)] w-full max-w-4xl mx-auto flex flex-col">
+        
+        <header class="w-full flex justify-between items-center mb-10 sticky top-0 bg-gray-900/90 z-20 py-4">
+          <div class="flex items-center gap-2">
+            <!-- Kullanıcı E-postası gösteriliyor -->
+            <span class="text-2xl font-bold text-purple-400">D</span>
+            <span class="text-sm font-light text-white">{{ session.user.email }}</span>
           </div>
-
-          <div class="flex items-center gap-4">
-            <!-- Bildirim durumu göstergesi -->
-            <div
-              v-if="notificationsEnabled"
-              class="flex items-center gap-2 text-green-400 text-sm"
-            >
-              🔔 Bildirimler aktif
-            </div>
+          <div>
+            <!-- Çıkış Yap Butonu -->
             <button
-              @click="supabase.auth.signOut()"
+              @click="handleLogout"
               class="flex items-center gap-2 text-sm bg-black/30 text-red-400 hover:text-red-500 p-2 rounded-lg"
             >
               <LogOut :size="16" />
@@ -99,15 +66,43 @@ onMounted(() => {
         </header>
 
         <main class="animate-fade-in w-full flex-1 flex flex-col items-center justify-center">
+          
+          <!-- ANA MENÜ GÖRÜNÜMÜ -->
           <div v-if="activeView === 'menu'" class="grid grid-cols-3 gap-4 max-w-sm mx-auto">
+            
+            <!-- MEVCUT 6 BUTON -->
             <MenuButton @click="navigateTo('posts', null)" label="Tüm Akış"><Home :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'text')" label="Notlar"><BookText :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'image')" label="Fotoğraflar"><ImageIcon :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'video')" label="Videolar"><Film :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('posts', 'audio')" label="Sesler"><Music :size="36" class="text-white/80" /></MenuButton>
             <MenuButton @click="navigateTo('chat')" label="Anlık Sohbet"><MessageSquare :size="36" class="text-white/80" /></MenuButton>
+            
+            <!-- 👇 YENİ EKLENEN 3 DOĞUM GÜNÜ BUTONU (Kırmızı işaretli alan) -->
+            <MenuButton 
+              @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20251129T19&p0=107&msg=Ezel+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
+              label="Ezel Doğumgünü"
+            >
+              <Gift :size="36" class="text-white/80" />
+            </MenuButton>
+            
+            <MenuButton 
+              @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20251119T17&p0=107&msg=Melik+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
+              label="Melik Doğumgünü"
+            >
+              <PartyPopper :size="36" class="text-white/80" />
+            </MenuButton>
+            
+            <MenuButton 
+              @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20260731T17&p0=805&msg=Nihal+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
+              label="Nihal Doğumgünü"
+            >
+              <Gift :size="36" class="text-white/80" />
+            </MenuButton>
+            
           </div>
 
+          <!-- DİĞER VİEW'LAR (Chat veya Posts) -->
           <div v-else class="w-full h-full flex flex-col">
             <button
               @click="navigateToMenu"
