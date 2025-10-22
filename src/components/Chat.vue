@@ -65,25 +65,44 @@ function scrollToBottom() {
   });
 }
 
+// PROFİL KONTROLÜ - USERNAME İLE GÜNCELLENDİ
 async function ensureProfile(user) {
   try {
     const { data: existing } = await supabase
       .from("profiles")
-      .select("id")
+      .select("id, username")
       .eq("id", user.id)
       .single();
 
     if (!existing) {
+      // Yeni kullanıcı - EMAİL'DEN OTOMATİK USERNAME
+      const autoUsername = user.email ? 
+        user.email.split("@")[0] : 
+        `user_${user.id.substring(0, 8)}`;
+      
       await supabase.from("profiles").insert({
         id: user.id,
-        username: user.email ? user.email.split("@")[0] : `user_${user.id.substring(0, 8)}`, 
+        username: autoUsername, // Email'in başı
       });
+      console.log('✅ Profil oluşturuldu - Username:', autoUsername);
+
+    } else if (!existing.username) {
+      // Eski kullanıcı - EMAİL'DEN OTOMATİK USERNAME
+      const autoUsername = user.email ? 
+        user.email.split("@")[0] : 
+        `user_${user.id.substring(0, 8)}`;
+      
+      await supabase.from("profiles")
+        .update({ username: autoUsername })
+        .eq('id', user.id);
+      console.log('✅ Username güncellendi:', autoUsername);
     }
   } catch (err) {
     console.error("⚠️ Profil kontrolü hatası:", err.message);
   }
 }
 
+// MESAJ GÖNDERME - BİLDİRİM İLE
 async function addMessage() {
   const content = newMessage.value.trim();
   if (content === "") return;
@@ -104,9 +123,41 @@ async function addMessage() {
       });
 
     if (error) throw error;
+
+    // BİLDİRİM GÖNDER - USERNAME İLE
+    await sendNotificationToOthers(user.id, content);
+
   } catch (err) {
     console.error("❌ Mesaj gönderme hatası:", err.message);
     newMessage.value = temp; 
+  }
+}
+
+// BİLDİRİM GÖNDERME FONKSİYONU - USERNAME İLE
+async function sendNotificationToOthers(senderId, messageContent) {
+  try {
+    // Profiles tablosundan username al (email'den otomatik)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('id', senderId)
+      .single();
+
+    const username = profile?.username || `user_${senderId.substring(0, 8)}`;
+
+    // Bildirimi gönder
+    const { error } = await supabase.functions.invoke('send-notification', {
+      body: { 
+        sender_id: senderId,
+        message_content: messageContent,
+        sender_username: username // Email'in başı gözükecek
+      }
+    });
+
+    if (error) throw error;
+    console.log('✅ Bildirim gönderildi - Gönderen:', username);
+  } catch (error) {
+    console.error('❌ Bildirim gönderme hatası:', error);
   }
 }
 
@@ -114,6 +165,7 @@ async function handleLogout() {
     await supabase.auth.signOut();
 }
 
+// İZİN VER BUTONU
 async function requestPermission() {
   if (!session.value?.user) {
     alert('❌ Önce giriş yapmalısınız!');
@@ -150,6 +202,7 @@ async function requestPermission() {
   }
 }
 
+// OTOMATİK PUSH ABONELİĞİ
 async function initializePushSubscription(user) {
   if (!user) return;
   
