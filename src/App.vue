@@ -1,139 +1,52 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import { supabase } from './supabaseClient';
-import { session } from './store'; // Global store'dan session alınıyor
-import Chat from './components/Chat.vue';
-import Posts from './components/Posts.vue';
-import MenuButton from './components/MenuButton.vue'; // ✅ MenuButton geri eklendi ve sorun çözülmeli
+import { ref, onMounted, watchEffect } from 'vue'
+import { session } from './store.js'
+import Auth from './components/Auth.vue'
+import Posts from './components/Posts.vue'
+import Chat from './components/Chat.vue'
+import MenuButton from './components/MenuButton.vue'
+import { Film, Image as ImageIcon, Music, MessageSquare, BookText, Home, LogOut, ArrowLeft } from 'lucide-vue-next'
+import { supabase } from './supabaseClient.js'
 
-// Yeni ikonları içe aktarıyoruz
-import { 
-  LogOut, ArrowLeft, Home, BookText, ImageIcon, Film, Music, MessageSquare, 
-  Gift, PartyPopper // Yeni doğum günü ikonları
-} from "lucide-vue-next"; 
+const activeView = ref('menu')
+const currentFilter = ref(null)
+const notificationsEnabled = ref(false)
+const userLoaded = ref(false)
 
-// Mevcut state'ler
-const activeView = ref('menu'); 
-const currentFilter = ref(null);
-
-// Mevcut fonksiyonlar
-function navigateTo(view, filter = null) {
-  activeView.value = view;
-  currentFilter.value = filter;
+function navigateTo(viewName, filter = null) {
+  currentFilter.value = filter
+  activeView.value = viewName
 }
 
 function navigateToMenu() {
-  activeView.value = 'menu';
+  activeView.value = 'menu'
+  currentFilter.value = null
 }
 
-async function handleLogout() {
-  await supabase.auth.signOut();
-}
-
-// Harici URL'yi yeni sekmede açan fonksiyon
-function openUrl(url) {
-  window.open(url, '_blank');
-}
-
-// Oturum kontrolü (store.js'de yapıldığı için burada sadece reaktif olarak kullanıyoruz)
 onMounted(() => {
-  // Uygulama yüklendiğinde başka bir işlem gerekirse buraya eklenebilir.
-});
-</script>
+  // Kullanıcı oturumu değiştikçe kontrol et
+  watchEffect(() => {
+    if (session.value && session.value.user) {
+      userLoaded.value = true
+    }
+  })
 
-<template>
-  <div class="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4 relative">
-    
-    <div v-if="session?.user">
-      <div class="h-[calc(100vh-2rem)] w-full max-w-4xl mx-auto flex flex-col">
-        
-        <header class="w-full flex justify-between items-center mb-10 sticky top-0 bg-gray-900/90 z-20 py-4">
-          <div class="flex items-center gap-2">
-            <!-- Kullanıcı E-postası gösteriliyor -->
-            <span class="text-2xl font-bold text-purple-400">D</span>
-            <span class="text-sm font-light text-white">{{ session.user.email }}</span>
-          </div>
-          <div>
-            <!-- Çıkış Yap Butonu -->
-            <button
-              @click="handleLogout"
-              class="flex items-center gap-2 text-sm bg-black/30 text-red-400 hover:text-red-500 p-2 rounded-lg"
-            >
-              <LogOut :size="16" />
-              <span class="hidden sm:inline">Çıkış Yap</span>
-            </button>
-          </div>
-        </header>
+  // OneSignal izin durumunu kontrol et (otomatik mod)
+  if (window.OneSignalDeferred) {
+    window.OneSignalDeferred.push(async function (OneSignal) {
+      try {
+        const permission = await OneSignal.Notifications.permission
+        notificationsEnabled.value = (permission === "granted")
 
-        <main class="animate-fade-in w-full flex-1 flex flex-col items-center justify-center">
-          
-          <!-- ANA MENÜ GÖRÜNÜMÜ -->
-          <div v-if="activeView === 'menu'" class="grid grid-cols-3 gap-4 max-w-sm mx-auto">
-            
-            <!-- MEVCUT 6 BUTON -->
-            <MenuButton @click="navigateTo('posts', null)" label="Tüm Akış"><Home :size="36" class="text-white/80" /></MenuButton>
-            <MenuButton @click="navigateTo('posts', 'text')" label="Notlar"><BookText :size="36" class="text-white/80" /></MenuButton>
-            <MenuButton @click="navigateTo('posts', 'image')" label="Fotoğraflar"><ImageIcon :size="36" class="text-white/80" /></MenuButton>
-            <MenuButton @click="navigateTo('posts', 'video')" label="Videolar"><Film :size="36" class="text-white/80" /></MenuButton>
-            <MenuButton @click="navigateTo('posts', 'audio')" label="Sesler"><Music :size="36" class="text-white/80" /></MenuButton>
-            <MenuButton @click="navigateTo('chat')" label="Anlık Sohbet"><MessageSquare :size="36" class="text-white/80" /></MenuButton>
-            
-            <!-- 👇 YENİ EKLENEN 3 DOĞUM GÜNÜ BUTONU -->
-            <MenuButton 
-              @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20251129T19&p0=107&msg=Ezel+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
-              label="Ezel Doğumgünü"
-            >
-              <Gift :size="36" class="text-white/80" />
-            </MenuButton>
-            
-            <MenuButton 
-              @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20251119T17&p0=107&msg=Melik+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
-              label="Melik Doğumgünü"
-            >
-              <PartyPopper :size="36" class="text-white/80" />
-            </MenuButton>
-            
-            <MenuButton 
-              @click="openUrl('https://www.timeanddate.com/countdown/birthday?iso=20260731T17&p0=805&msg=Nihal+Do%C4%9Fumg%C3%BCn%C3%BC&font=cursive')" 
-              label="Nihal Doğumgünü"
-            >
-              <Gift :size="36" class="text-white/80" />
-            </MenuButton>
-            
-          </div>
-
-          <!-- DİĞER VİEW'LAR (Chat veya Posts) -->
-          <div v-else class="w-full h-full flex flex-col">
-            <button
-              @click="navigateToMenu"
-              class="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 mb-6 self-start"
-            >
-              <ArrowLeft :size="16" />
-              Ana Menüye Dön
-            </button>
-            <div class="flex-1">
-              <Chat v-if="activeView === 'chat'" :onBack="navigateToMenu" />
-              <Posts v-if="activeView === 'posts'" :filter="currentFilter" />
-            </div>
-          </div>
-        </main>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style>
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+        // Oturum varsa kullanıcıyı OneSignal ile eşleştir
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await OneSignal.User.PushSubscription.setExternalId(user.id)
+          console.log("✅ OneSignal eşleştirildi:", user.id)
+        }
+      } catch (err) {
+        console.warn("OneSignal başlatılırken hata:", err)
+      }
+    })
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
-}
-</style>
+})
