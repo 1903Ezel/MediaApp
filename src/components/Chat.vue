@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
-import { Send, LogOut, MessageSquare, Bell } from "lucide-vue-next"; // BELL EKLENDİ
+import { Send, LogOut, MessageSquare, Bell } from "lucide-vue-next";
 import { session } from '../store.js'; 
 import notificationService from '../services/notificationService.js'; 
 
@@ -54,10 +54,8 @@ async function ensureProfile(user) {
       .single();
 
     if (!existing) {
-      // Eğer kullanıcı profil oluşturmadan giriş yaptıysa, temel bir profil oluştururuz.
       await supabase.from("profiles").insert({
         id: user.id,
-        // E-posta adresinin @ işaretinden önceki kısmını kullanıcı adı olarak kullanır.
         username: user.email ? user.email.split("@")[0] : `user_${user.id.substring(0, 8)}`, 
       });
     }
@@ -96,15 +94,15 @@ async function handleLogout() {
     await supabase.auth.signOut();
 }
 
-// YENİ: TEST BİLDİRİM FONKSİYONU
-async function testNotification() {
+// İZİN VER butonu fonksiyonu
+async function requestPermission() {
   if (!session.value?.user) {
     alert('❌ Önce giriş yapmalısınız!');
     return;
   }
   
   try {
-    console.log('🧪 Bildirim testi başlatılıyor...');
+    console.log('🔔 Bildirim izni isteniyor...');
     
     // Push izni iste
     const result = await notificationService.requestPermission(session.value.user.id);
@@ -130,18 +128,17 @@ async function testNotification() {
     }
     
   } catch (error) {
-    console.error('💥 Test hatası:', error);
+    console.error('💥 İzin hatası:', error);
     alert('❌ Hata: ' + error.message);
   }
 }
 
-// YENİ: Otomatik push aboneliği fonksiyonu
+// Otomatik push aboneliği fonksiyonu
 async function initializePushSubscription(user) {
   if (!user) return;
   
   console.log('👤 Kullanıcı tespit edildi, push aboneliği başlatılıyor...');
   
-  // OneSignal'in yüklenmesi için 3 saniye bekle
   setTimeout(async () => {
     try {
       console.log('🔔 Push aboneliği deneniyor...');
@@ -149,7 +146,6 @@ async function initializePushSubscription(user) {
       console.log('🎯 Push aboneliği sonucu:', success);
       
       if (success) {
-        // Başarılı olduğunda abonelikleri göster
         const { data: subs } = await supabase
           .from('push_subscriptions')
           .select('*')
@@ -163,10 +159,8 @@ async function initializePushSubscription(user) {
 }
 
 onMounted(async () => {
-  // 1. İlk mesajları getir
   await fetchMessages();
 
-  // 2. Realtime Aboneliği Kur 
   if (subscription.value) subscription.value.unsubscribe(); 
 
   subscription.value = supabase
@@ -179,7 +173,6 @@ onMounted(async () => {
         table: "messages", 
       },
       async (payload) => {
-        // Yeni mesaj verisi geldi, profil bilgisini de alıp listeye ekle
         const { data: senderData } = await supabase
           .from("profiles")
           .select("id, username")
@@ -197,45 +190,41 @@ onMounted(async () => {
     )
     .subscribe();
 
-  // 3. YENİ: Otomatik push aboneliği
   if (session.value?.user) {
     initializePushSubscription(session.value.user);
   }
 
-  // 4. Session değiştiğinde push aboneliğini başlat
   watch(session, (newSession) => {
     if (newSession?.user) {
       initializePushSubscription(newSession.user);
     }
   });
 
-  // 5. Yeni mesaj geldiğinde otomatik aşağı kaydır
   watch(messages, scrollToBottom, { deep: true, flush: 'post' }); 
 
   return () => {
-    // Bileşen ayrıldığında Realtime aboneliğini temizle
     if (subscription.value) subscription.value.unsubscribe();
   };
 });
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-black/40 rounded-xl shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
+  <div class="flex flex-col h-screen bg-black/40 rounded-xl shadow-2xl backdrop-blur-sm border border-purple-500/30 overflow-hidden">
     
     <!-- SABIT ÜST BAR - WhatsApp gibi -->
-    <div class="shrink-0 p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30">
+    <div class="shrink-0 p-4 flex justify-between items-center bg-gray-900/80 border-b border-purple-500/30 sticky top-0 z-50">
       <div class="flex items-center gap-3">
         <MessageSquare :size="24" class="text-purple-400" />
-        <h2 class="text-xl font-bold text-white">Grup Sohbet Odası</h2>
+        <h2 class="text-xl font-bold text-white">sohbet</h2>
       </div>
       <div class="flex gap-2">
-        <!-- YENİ: TEST BİLDİRİM BUTONU -->
+        <!-- İZİN VER butonu -->
         <button 
-          @click="testNotification" 
+          @click="requestPermission" 
           class="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg transition flex items-center gap-1"
         >
           <Bell :size="16" />
-          Test Bildirim
+          İzin ver
         </button>
         <button 
           v-if="session?.user" 
@@ -282,7 +271,7 @@ onMounted(async () => {
     </div>
 
     <!-- SABIT ALT BAR - Mesaj yazma alanı ASLA HAREKET ETMEYECEK -->
-    <div class="shrink-0 p-4 bg-gray-900/80 border-t border-purple-500/30">
+    <div class="shrink-0 p-4 bg-gray-900/80 border-t border-purple-500/30 sticky bottom-0 z-50">
       <form @submit.prevent="addMessage" class="flex gap-3">
         <input
           v-model="newMessage"
@@ -322,21 +311,32 @@ onMounted(async () => {
     border-radius: 0;
     border: none;
   }
+  
+  /* Mobile için viewport optimizasyonu */
+  .h-screen {
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height */
+  }
 }
 
 /* KESİN SABIT LAYOUT */
 .flex-col {
   display: flex;
   flex-direction: column;
-  height: 100vh; /* Tam ekran yüksekliği */
+  height: 100vh;
 }
 
 .shrink-0 {
-  flex-shrink: 0; /* Asla küçülmesin */
+  flex-shrink: 0;
 }
 
 .flex-1 {
-  flex: 1; /* Mesaj alanı kalan tüm alanı kaplasın */
-  min-height: 0; /* Scroll için gerekli */
+  flex: 1;
+  min-height: 0; /* Scroll için kritik */
+}
+
+/* Sticky header ve footer için ek güvence */
+.sticky {
+  position: sticky;
 }
 </style>
