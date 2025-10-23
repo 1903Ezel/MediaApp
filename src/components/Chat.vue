@@ -227,6 +227,14 @@ async function initializePushSubscription(user) {
   }, 3000);
 }
 
+// ✅ YENİ: Safari input focus fix
+function handleInputFocus() {
+  // Safari'de input focus olduğunda scroll'u düzelt
+  setTimeout(() => {
+    scrollToBottom();
+  }, 100);
+}
+
 onMounted(async () => {
   await fetchMessages();
 
@@ -353,6 +361,7 @@ onMounted(async () => {
       <form @submit.prevent="addMessage" class="message-form">
         <input
           v-model="newMessage"
+          @focus="handleInputFocus" <!-- ✅ YENİ: Safari fix -->
           type="text"
           placeholder="Mesajınızı yazın..."
           class="message-input"
@@ -594,6 +603,9 @@ onMounted(async () => {
   outline: none;
   font-size: 1rem;
   box-sizing: border-box;
+  /* ✅ YENİ: Safari input fix */
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .message-input:focus {
@@ -613,6 +625,8 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  /* ✅ YENİ: Safari button fix */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -664,6 +678,8 @@ onMounted(async () => {
   .message-input {
     padding: 0.625rem 0.875rem;
     font-size: 0.875rem;
+    /* ✅ YENİ: Mobile Safari input fix */
+    font-size: 16px; /* Zoom'u önler */
   }
 }
 
@@ -672,6 +688,13 @@ onMounted(async () => {
   .chat-container {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  /* ✅ YENİ: PWA input fix */
+  .message-input {
+    transform: translateZ(0);
   }
 }
 </style>
