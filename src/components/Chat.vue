@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted, watch, nextTick, computed } from "vue";
+import { ref, onMounted, watch, nextTick } from "vue";
 import { supabase } from "../supabaseClient.js"; 
-import { Send, LogOut, Bell, ArrowLeft, User } from "lucide-vue-next";
+import { Send, LogOut, MessageSquare, Bell, ArrowLeft } from "lucide-vue-next";
 import { session } from '../store.js'; 
 import notificationService from '../services/notificationService.js'; 
 
@@ -18,21 +18,16 @@ const messages = ref([]);
 const newMessage = ref("");
 const chatContainer = ref(null);
 const subscription = ref(null); 
-const isSafari = ref(false);
 
-// Kullanıcı adını computed property olarak al
-const currentUsername = computed(() => {
-  if (!session.value?.user?.email) return "Kullanıcı";
-  return session.value.user.email.split("@")[0];
-});
-
-// ANA MENÜYE DÖNME FONKSİYONU
+// ANA MENÜYE DÖNME FONKSİYONU - App.vue'deki navigateToMenu'yu çağır
 function goToMainMenu() {
   console.log('🔙 Ana menüye dönülüyor...');
   
+  // App.vue'den gelen onBack fonksiyonunu çağır
   if (props.onBack) {
     props.onBack();
   } else {
+    // Fallback: tarayıcı geri git
     window.history.back();
   }
 }
@@ -58,30 +53,19 @@ async function fetchMessages() {
     console.error("❌ Mesajlar alınırken hata:", error.message);
   } finally {
     loading.value = false;
-    safeScrollToBottom();
+    scrollToBottom();
   }
 }
 
-// SAFARİ İÇİN GÜVENLİ SCROLL
-function safeScrollToBottom() {
+function scrollToBottom() {
   nextTick(() => {
     if (chatContainer.value) {
-      try {
-        chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-        // Safari için ek güvenlik
-        setTimeout(() => {
-          if (chatContainer.value) {
-            chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-          }
-        }, 100);
-      } catch (error) {
-        console.log('Safari scroll hatası:', error);
-      }
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
     }
   });
 }
 
-// PROFİL KONTROLÜ
+// PROFİL KONTROLÜ - USERNAME İLE GÜNCELLENDİ
 async function ensureProfile(user) {
   try {
     const { data: existing } = await supabase
@@ -91,17 +75,19 @@ async function ensureProfile(user) {
       .single();
 
     if (!existing) {
+      // Yeni kullanıcı - EMAİL'DEN OTOMATİK USERNAME
       const autoUsername = user.email ? 
         user.email.split("@")[0] : 
         `user_${user.id.substring(0, 8)}`;
       
       await supabase.from("profiles").insert({
         id: user.id,
-        username: autoUsername,
+        username: autoUsername, // Email'in başı
       });
       console.log('✅ Profil oluşturuldu - Username:', autoUsername);
 
     } else if (!existing.username) {
+      // Eski kullanıcı - EMAİL'DEN OTOMATİK USERNAME
       const autoUsername = user.email ? 
         user.email.split("@")[0] : 
         `user_${user.id.substring(0, 8)}`;
@@ -116,16 +102,13 @@ async function ensureProfile(user) {
   }
 }
 
-// MESAJ GÖNDERME
+// MESAJ GÖNDERME - BİLDİRİM İLE
 async function addMessage() {
   const content = newMessage.value.trim();
   if (content === "") return;
 
   const user = session.value?.user; 
-  if (!user) {
-    alert("Giriş yapmalısınız.");
-    return;
-  }
+  if (!user) return alert("Giriş yapmalısınız.");
 
   await ensureProfile(user); 
   const temp = newMessage.value;
@@ -141,6 +124,7 @@ async function addMessage() {
 
     if (error) throw error;
 
+    // BİLDİRİM GÖNDER - USERNAME İLE
     await sendNotificationToOthers(user.id, content);
 
   } catch (err) {
@@ -149,9 +133,10 @@ async function addMessage() {
   }
 }
 
-// BİLDİRİM GÖNDERME FONKSİYONU
+// BİLDİRİM GÖNDERME FONKSİYONU - USERNAME İLE
 async function sendNotificationToOthers(senderId, messageContent) {
   try {
+    // Profiles tablosundan username al (email'den otomatik)
     const { data: profile } = await supabase
       .from('profiles')
       .select('username')
@@ -160,11 +145,12 @@ async function sendNotificationToOthers(senderId, messageContent) {
 
     const username = profile?.username || `user_${senderId.substring(0, 8)}`;
 
+    // Bildirimi gönder
     const { error } = await supabase.functions.invoke('send-notification', {
       body: { 
         sender_id: senderId,
         message_content: messageContent,
-        sender_username: username
+        sender_username: username // Email'in başı gözükecek
       }
     });
 
@@ -176,12 +162,7 @@ async function sendNotificationToOthers(senderId, messageContent) {
 }
 
 async function handleLogout() {
-  try {
     await supabase.auth.signOut();
-    console.log('✅ Çıkış yapıldı');
-  } catch (error) {
-    console.error('❌ Çıkış hatası:', error);
-  }
 }
 
 // İZİN VER BUTONU
@@ -246,27 +227,7 @@ async function initializePushSubscription(user) {
   }, 3000);
 }
 
-// Enter tuşu ile mesaj gönderme
-function handleKeyPress(event) {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    addMessage();
-  }
-}
-
-// PWA INPUT FIX - Apple cihazlar için
-function handleInputFocus() {
-  if (isSafari.value) {
-    setTimeout(() => {
-      safeScrollToBottom();
-    }, 300);
-  }
-}
-
 onMounted(async () => {
-  // Safari tespiti
-  isSafari.value = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  
   await fetchMessages();
 
   if (subscription.value) subscription.value.unsubscribe(); 
@@ -293,7 +254,7 @@ onMounted(async () => {
         };
 
         messages.value.push(newMessage);
-        safeScrollToBottom();
+        scrollToBottom();
       }
     )
     .subscribe();
@@ -308,7 +269,7 @@ onMounted(async () => {
     }
   });
 
-  watch(messages, safeScrollToBottom, { deep: true, flush: 'post' }); 
+  watch(messages, scrollToBottom, { deep: true, flush: 'post' }); 
 
   return () => {
     if (subscription.value) subscription.value.unsubscribe();
@@ -317,23 +278,23 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="chat-container" :class="{ 'is-safari': isSafari }">
+  <!-- KESİN SABIT LAYOUT -->
+  <div class="chat-container">
     
-    <!-- SABIT ÜST BAR -->
+    <!-- SABIT ÜST BAR - WhatsApp gibi TAM -->
     <div class="chat-header">
+      <!-- SOL TARAF: Geri butonu + Kullanıcı bilgisi -->
       <div class="header-left">
         <button @click="goToMainMenu" class="back-btn" title="Ana menüye dön">
           <ArrowLeft :size="24" class="text-white" />
         </button>
         <div class="user-info">
-          <div class="user-name">Sohbet Odası</div>
-          <div v-if="session?.user" class="user-email">
-            <User :size="12" />
-            {{ currentUsername }}
-          </div>
+          <div class="user-name">sohbet</div>
+          <div v-if="session?.user" class="user-email">{{ session.user.email }}</div>
         </div>
       </div>
 
+      <!-- SAĞ TARAF: Butonlar -->
       <div class="header-buttons">
         <button 
           @click="requestPermission" 
@@ -354,15 +315,13 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- MESAJ ALANI -->
+    <!-- SADECE BURASI SCROLL -->
     <div ref="chatContainer" class="messages-area">
       <div v-if="loading" class="loading-message">
         Mesajlar yükleniyor...
       </div>
       <div v-else-if="messages.length === 0" class="empty-message">
-        <div class="empty-icon">💬</div>
-        <p>Henüz mesaj yok.</p>
-        <p class="empty-subtitle">İlk mesajı sen gönder!</p>
+        Henüz mesaj yok. İlk mesajı sen gönder!
       </div>
 
       <div
@@ -394,8 +353,6 @@ onMounted(async () => {
       <form @submit.prevent="addMessage" class="message-form">
         <input
           v-model="newMessage"
-          @keypress="handleKeyPress"
-          @focus="handleInputFocus"
           type="text"
           placeholder="Mesajınızı yazın..."
           class="message-input"
@@ -405,7 +362,6 @@ onMounted(async () => {
           type="submit"
           class="send-btn"
           :disabled="newMessage.trim() === '' || !session?.user"
-          title="Mesajı gönder"
         >
           <Send :size="20" />
         </button>
@@ -415,7 +371,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* TEMEL LAYOUT - DEĞİŞMEDİ */
+/* KESİN SABIT LAYOUT - TÜM CİHAZLAR İÇİN */
 .chat-container {
   position: fixed;
   top: 0;
@@ -433,7 +389,7 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 
-/* ÜST BAR - DEĞİŞMEDİ */
+/* ÜST BAR - KESİNLİKLE SABIT - WhatsApp gibi */
 .chat-header {
   flex-shrink: 0;
   display: flex;
@@ -483,9 +439,6 @@ onMounted(async () => {
 }
 
 .user-email {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.7);
   line-height: 1.2;
@@ -534,7 +487,7 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-/* MESAJ ALANI - DEĞİŞMEDİ */
+/* MESAJ ALANI - SADECE BURASI SCROLL */
 .messages-area {
   flex: 1;
   overflow-y: auto;
@@ -545,7 +498,7 @@ onMounted(async () => {
   background: transparent;
 }
 
-/* SCROLLBAR - DEĞİŞMEDİ */
+/* SCROLLBAR STILI */
 .messages-area::-webkit-scrollbar {
   width: 6px;
 }
@@ -565,24 +518,7 @@ onMounted(async () => {
   padding: 2rem 0;
 }
 
-.empty-message {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.empty-icon {
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
-}
-
-.empty-subtitle {
-  font-size: 0.875rem;
-  opacity: 0.7;
-}
-
-/* MESAJ STILLERI - DEĞİŞMEDİ */
+/* MESAJ STILLERI */
 .message-wrapper {
   display: flex;
   margin-bottom: 1rem;
@@ -598,12 +534,6 @@ onMounted(async () => {
   border-radius: 1rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   word-wrap: break-word;
-  animation: fadeIn 0.3s ease-in;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .own-bubble {
@@ -629,7 +559,6 @@ onMounted(async () => {
   font-size: 1rem;
   margin: 0;
   line-height: 1.4;
-  word-break: break-word;
 }
 
 .message-time {
@@ -639,7 +568,7 @@ onMounted(async () => {
   color: rgba(255, 255, 255, 0.7);
 }
 
-/* ALT BAR - DEĞİŞMEDİ */
+/* ALT BAR - KESİNLİKLE SABIT */
 .input-area {
   flex-shrink: 0;
   padding: 1rem;
@@ -665,7 +594,6 @@ onMounted(async () => {
   outline: none;
   font-size: 1rem;
   box-sizing: border-box;
-  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .message-input:focus {
@@ -689,17 +617,15 @@ onMounted(async () => {
 
 .send-btn:hover:not(:disabled) {
   background: rgb(126, 34, 206);
-  transform: scale(1.05);
 }
 
 .send-btn:disabled {
   background: rgb(107, 114, 128);
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
-/* MOBILE OPTIMIZASYONU - DEĞİŞMEDİ */
+/* MOBILE OPTIMIZASYONU */
 @media (max-width: 768px) {
   .chat-container {
     border-radius: 0;
@@ -741,59 +667,11 @@ onMounted(async () => {
   }
 }
 
-/* ✅ SAFARİ ve PWA DÜZELTMELERİ - YENİ EKLENDİ */
-.is-safari .chat-container {
-  position: fixed;
-  width: 100%;
-  height: 100%;
-}
-
-/* Safari input zoom önleme */
-@media screen and (max-width: 768px) {
-  .message-input {
-    font-size: 16px; /* Safari zoom önleme */
-  }
-}
-
-/* Safari için safe area ek güvenlik */
-@supports (padding: max(0px)) {
-  .is-safari .chat-container {
-    padding-top: max(env(safe-area-inset-top), 0px);
-    padding-bottom: max(env(safe-area-inset-bottom), 0px);
-    padding-left: max(env(safe-area-inset-left), 0px);
-    padding-right: max(env(safe-area-inset-right), 0px);
-  }
-}
-
-/* Safari PWA standalone modu */
-@media all and (display-mode: standalone) {
-  .is-safari .chat-container {
-    height: 100vh;
-    height: calc(100vh - env(safe-area-inset-bottom));
-  }
-  
-  /* PWA'da input focus sorunu çözümü */
-  .message-input {
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
-  }
-}
-
-/* Safari için hardware acceleration */
-.chat-container {
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-perspective: 1000;
-  perspective: 1000;
-}
-
 /* PWA SAFE AREA DESTEĞİ */
-@supports (padding: max(0px)) {
+@media (display-mode: standalone) {
   .chat-container {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
   }
 }
 </style>
