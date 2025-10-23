@@ -2,7 +2,7 @@
 <html lang="tr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>20NEM22 - Multimedya Platformu</title>
 
     <meta
@@ -10,10 +10,21 @@
       content="Modern, responsive ve PWA destekli multimedya paylaşım uygulaması."
     />
     <meta name="theme-color" content="#8b5cf6" />
+    
+    <!-- ✅ Safari Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="20NEM22">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="mobile-web-app-capable" content="yes">
 
     <!-- ✅ App Icons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    
+    <!-- ✅ Safari Touch Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="apple-touch-startup-image" href="/apple-touch-icon.png">
 
     <!-- ✅ PWA Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -48,6 +59,39 @@
         }
       });
     </script>
+
+    <!-- ✅ Safari CSS Fixes -->
+    <style>
+      /* Safari için temel reset */
+      body {
+        -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      
+      /* Safari için input ve textarea özel stilleri */
+      input, textarea {
+        -webkit-appearance: none;
+        border-radius: 0;
+      }
+      
+      /* Safari momentum scroll */
+      .scroll-container {
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* Safari PWA fix */
+      @media (display-mode: standalone) {
+        body {
+          padding-top: env(safe-area-inset-top);
+          padding-bottom: env(safe-area-inset-bottom);
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
+        }
+      }
+    </style>
   </head>
 
   <body>
@@ -59,13 +103,56 @@
 
     <!-- ✅ PWA Service Worker Kaydı -->
     <script>
+      // Safari service worker desteği kontrolü
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
+          // Safari için service worker scope kontrolü
+          const scope = location.pathname.replace(/\/[^\/]*$/, '/');
+          
           navigator.serviceWorker
-            .register("/sw.js")
-            .then((reg) => console.log("✅ Service Worker kayıt edildi:", reg.scope))
-            .catch((err) => console.error("❌ Service Worker kaydı hatası:", err));
+            .register("/sw.js", { scope: './' })
+            .then((reg) => {
+              console.log("✅ Service Worker kayıt edildi:", reg.scope);
+              
+              // Safari için ek kontrol
+              if (reg.installing) {
+                console.log("🔄 Service Worker installing...");
+              } else if (reg.waiting) {
+                console.log("⏳ Service Worker waiting...");
+              } else if (reg.active) {
+                console.log("✅ Service Worker active");
+              }
+            })
+            .catch((err) => {
+              console.error("❌ Service Worker kaydı hatası:", err);
+              
+              // Safari hatası için fallback
+              if (err.name === 'SecurityError') {
+                console.warn('⚠️ Safari security error - service worker scope issue');
+              }
+            });
         });
+      } else {
+        console.warn("⚠️ Service Worker desteklenmiyor (Safari?)");
+      }
+
+      // Safari PWA detection
+      if (window.navigator.standalone) {
+        console.log("📱 Safari PWA modunda çalışıyor");
+        document.body.classList.add('pwa-standalone');
+      }
+
+      // Safari version detection
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari) {
+        console.log("🦁 Safari tarayıcısı tespit edildi");
+        document.body.classList.add('is-safari');
+        
+        // Safari için viewport fix
+        const viewport = document.querySelector('meta[name="viewport"]');
+        if (viewport) {
+          viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover, shrink-to-fit=no');
+        }
       }
     </script>
   </body>
