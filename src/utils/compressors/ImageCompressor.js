@@ -43,8 +43,10 @@ export class ImageCompressor {
                   type: 'image/jpeg',
                   lastModified: Date.now()
                 });
+                console.log('✅ Compression başarılı!');
                 resolve(compressedFile);
               } else {
+                console.warn('⚠️ Blob oluşturulamadı, orijinal dosya kullanılıyor');
                 resolve(file); // Hata durumunda orijinali döndür
               }
             },
@@ -66,16 +68,16 @@ export class ImageCompressor {
     });
   }
 
-  // Test fonksiyonu
+  // Test fonksiyonu - tarayıcı konsolunda test etmek için
   static async testCompression(file) {
     console.log('🧪 Compression test başlıyor...');
-    console.log('Orijinal dosya:', file.name, file.size, 'bytes');
+    console.log('Orijinal dosya:', file.name, (file.size / 1024 / 1024).toFixed(2), 'MB');
     
     const compressed = await this.compress(file);
-    console.log('Sıkıştırılmış:', compressed.name, compressed.size, 'bytes');
+    console.log('Sıkıştırılmış:', compressed.name, (compressed.size / 1024 / 1024).toFixed(2), 'MB');
     
     const savings = ((file.size - compressed.size) / file.size * 100).toFixed(1);
-    console.log(`Tasarruf: ${savings}%`);
+    console.log(`🎉 Tasarruf: ${savings}%`);
     
     return { original: file, compressed, savings };
   }
